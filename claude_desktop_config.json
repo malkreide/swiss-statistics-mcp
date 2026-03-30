@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "swiss-statistics": {
+      "command": "python",
+      "args": ["-m", "swiss_statistics_mcp.server"]
+    }
+  }
+}

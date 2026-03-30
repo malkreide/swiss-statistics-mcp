@@ -1344,18 +1344,12 @@ def _schulamt_relevance(table_id: str) -> str:
 # Entry point
 # ---------------------------------------------------------------------------
 
-def main() -> None:
-    import sys
-    import os
-
-    transport = os.environ.get("MCP_TRANSPORT", "stdio")
-    port = int(os.environ.get("PORT", "8052"))
-
-    if transport == "sse" or "--sse" in sys.argv:
-        mcp.run(transport="sse", port=port)
-    else:
-        mcp.run(transport="stdio")
-
-
 if __name__ == "__main__":
-    main()
+    import sys
+
+    if "--http" in sys.argv:
+        port_idx = sys.argv.index("--port") + 1 if "--port" in sys.argv else None
+        port     = int(sys.argv[port_idx]) if port_idx else 8000
+        mcp.run(transport="streamable-http", port=port)
+    else:
+        mcp.run()

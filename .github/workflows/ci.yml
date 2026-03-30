@@ -7,33 +7,27 @@ on:
     branches: [main]
 
 jobs:
-  quality:
+  test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
-
-      - name: Lint with ruff
-        run: ruff check src/
-
-      - name: Syntax check
-        run: python -m py_compile src/swiss_statistics_mcp/server.py
-
-      - name: Run unit tests (excluding live)
         run: |
-          if [ -d "tests" ]; then
-            pytest tests/ -m "not live" -v
-          else
-            echo "No tests directory found, skipping."
-          fi
+          pip install -e ".[dev]"
+
+      - name: Run tests
+        run: |
+          PYTHONPATH=src pytest tests/ -m "not live"
+
+      - name: Lint
+        run: ruff check src/ tests/
