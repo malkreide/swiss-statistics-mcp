@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -212,7 +212,7 @@ class SearchTablesInput(BaseModel):
         min_length=2,
         max_length=100,
     )
-    theme_code: Optional[str] = Field(
+    theme_code: str | None = Field(
         default=None,
         description="Optional: filter to a specific theme code, e.g. '15' for Bildung",
         pattern="^\\d{2}$",
@@ -267,7 +267,7 @@ class GetDataInput(BaseModel):
         description="BFS table ID, e.g. 'px-x-1504000000_173'",
         min_length=5,
     )
-    filters: Optional[list[DimensionFilter]] = Field(
+    filters: list[DimensionFilter] | None = Field(
         default=None,
         description=(
             "Optional dimension filters to narrow results. "
@@ -301,7 +301,7 @@ class GetEducationStatsInput(BaseModel):
         ),
         pattern="^(teachers|students|scenarios|scholarships)$",
     )
-    canton: Optional[str] = Field(
+    canton: str | None = Field(
         default=None,
         description=(
             "Optional canton filter. Use canton name or index value from metadata. "
@@ -326,7 +326,7 @@ class GetPopulationInput(BaseModel):
             "Use the exact name from BFS metadata."
         ),
     )
-    year: Optional[str] = Field(
+    year: str | None = Field(
         default=None,
         description="Year to filter, e.g. '2024'. Leave empty for all available years.",
     )
@@ -359,7 +359,7 @@ class CompareCantonsInput(BaseModel):
         min_length=2,
         max_length=27,
     )
-    additional_filters: Optional[list[DimensionFilter]] = Field(
+    additional_filters: list[DimensionFilter] | None = Field(
         default=None,
         description="Optional additional dimension filters beyond canton selection",
     )
@@ -1004,7 +1004,7 @@ async def bfs_education_stats(params: GetEducationStatsInput) -> str:
     canton_var: str = topic_cfg["canton_var"]
 
     # Resolve canton to value code
-    canton_value: Optional[str] = None
+    canton_value: str | None = None
     if params.canton:
         # Try exact match first, then partial match
         canton_value = CANTON_NAME_TO_VALUE.get(params.canton)

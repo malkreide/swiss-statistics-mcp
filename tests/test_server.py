@@ -10,7 +10,6 @@ Three tiers:
 from __future__ import annotations
 
 import json
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -185,7 +184,7 @@ class TestFeaturedDatasets:
 class TestBfsListThemes:
     @pytest.mark.asyncio
     async def test_returns_all_themes(self):
-        from swiss_statistics_mcp.server import bfs_list_themes, ListThemesInput
+        from swiss_statistics_mcp.server import ListThemesInput, bfs_list_themes
 
         with patch(
             "swiss_statistics_mcp.server._get",
@@ -201,7 +200,7 @@ class TestBfsListThemes:
 
     @pytest.mark.asyncio
     async def test_theme_codes_present(self):
-        from swiss_statistics_mcp.server import bfs_list_themes, ListThemesInput
+        from swiss_statistics_mcp.server import ListThemesInput, bfs_list_themes
 
         with patch(
             "swiss_statistics_mcp.server._get",
@@ -220,7 +219,7 @@ class TestBfsListThemes:
 class TestBfsGetTableMetadata:
     @pytest.mark.asyncio
     async def test_returns_variables(self):
-        from swiss_statistics_mcp.server import bfs_get_table_metadata, GetTableMetadataInput
+        from swiss_statistics_mcp.server import GetTableMetadataInput, bfs_get_table_metadata
 
         with patch(
             "swiss_statistics_mcp.server._get",
@@ -238,7 +237,7 @@ class TestBfsGetTableMetadata:
 
     @pytest.mark.asyncio
     async def test_theme_info_included(self):
-        from swiss_statistics_mcp.server import bfs_get_table_metadata, GetTableMetadataInput
+        from swiss_statistics_mcp.server import GetTableMetadataInput, bfs_get_table_metadata
 
         with patch(
             "swiss_statistics_mcp.server._get",
@@ -256,7 +255,8 @@ class TestBfsGetTableMetadata:
     @pytest.mark.asyncio
     async def test_404_returns_friendly_error(self):
         import httpx
-        from swiss_statistics_mcp.server import bfs_get_table_metadata, GetTableMetadataInput
+
+        from swiss_statistics_mcp.server import GetTableMetadataInput, bfs_get_table_metadata
 
         mock_response = MagicMock()
         mock_response.status_code = 404
@@ -279,7 +279,7 @@ class TestBfsGetTableMetadata:
 class TestBfsGetData:
     @pytest.mark.asyncio
     async def test_returns_table_structure(self):
-        from swiss_statistics_mcp.server import bfs_get_data, GetDataInput
+        from swiss_statistics_mcp.server import GetDataInput, bfs_get_data
 
         with patch(
             "swiss_statistics_mcp.server._post",
@@ -297,7 +297,7 @@ class TestBfsGetData:
 
     @pytest.mark.asyncio
     async def test_filter_passed_to_api(self):
-        from swiss_statistics_mcp.server import bfs_get_data, GetDataInput, DimensionFilter
+        from swiss_statistics_mcp.server import DimensionFilter, GetDataInput, bfs_get_data
 
         posted_body = {}
 
@@ -319,7 +319,7 @@ class TestBfsGetData:
 
     @pytest.mark.asyncio
     async def test_max_rows_warning(self):
-        from swiss_statistics_mcp.server import bfs_get_data, GetDataInput
+        from swiss_statistics_mcp.server import GetDataInput, bfs_get_data
 
         big_response = _mock_jsonstat2_response()
         big_response["value"] = list(range(1000))
@@ -353,7 +353,7 @@ class TestBfsGetData:
 class TestBfsEducationStats:
     @pytest.mark.asyncio
     async def test_teachers_topic(self):
-        from swiss_statistics_mcp.server import bfs_education_stats, GetEducationStatsInput
+        from swiss_statistics_mcp.server import GetEducationStatsInput, bfs_education_stats
 
         with patch(
             "swiss_statistics_mcp.server._post",
@@ -371,7 +371,7 @@ class TestBfsEducationStats:
 
     @pytest.mark.asyncio
     async def test_canton_filter_resolved(self):
-        from swiss_statistics_mcp.server import bfs_education_stats, GetEducationStatsInput
+        from swiss_statistics_mcp.server import GetEducationStatsInput, bfs_education_stats
 
         posted_bodies: list[dict] = []
 
@@ -392,7 +392,7 @@ class TestBfsEducationStats:
 
     @pytest.mark.asyncio
     async def test_invalid_canton_returns_error(self):
-        from swiss_statistics_mcp.server import bfs_education_stats, GetEducationStatsInput
+        from swiss_statistics_mcp.server import GetEducationStatsInput, bfs_education_stats
 
         result = await bfs_education_stats(
             GetEducationStatsInput(topic="teachers", canton="Fantasialand")
@@ -404,7 +404,7 @@ class TestBfsEducationStats:
 class TestBfsPopulation:
     @pytest.mark.asyncio
     async def test_total_breakdown(self):
-        from swiss_statistics_mcp.server import bfs_population, GetPopulationInput
+        from swiss_statistics_mcp.server import GetPopulationInput, bfs_population
 
         with patch(
             "swiss_statistics_mcp.server._post",
@@ -419,7 +419,7 @@ class TestBfsPopulation:
 
     @pytest.mark.asyncio
     async def test_age_breakdown_filters_0_18(self):
-        from swiss_statistics_mcp.server import bfs_population, GetPopulationInput
+        from swiss_statistics_mcp.server import GetPopulationInput, bfs_population
 
         posted: list[dict] = []
 
@@ -441,7 +441,7 @@ class TestBfsPopulation:
 class TestBfsCompareCanstons:
     @pytest.mark.asyncio
     async def test_multiple_cantons(self):
-        from swiss_statistics_mcp.server import bfs_compare_cantons, CompareCantonsInput
+        from swiss_statistics_mcp.server import CompareCantonsInput, bfs_compare_cantons
 
         with patch(
             "swiss_statistics_mcp.server._get",
@@ -469,7 +469,7 @@ class TestBfsCompareCanstons:
 class TestBfsFeaturedDatasets:
     @pytest.mark.asyncio
     async def test_returns_featured_list(self):
-        from swiss_statistics_mcp.server import bfs_featured_datasets, ListThemesInput
+        from swiss_statistics_mcp.server import ListThemesInput, bfs_featured_datasets
 
         result = await bfs_featured_datasets(ListThemesInput(lang="de"))
         data = json.loads(result)
@@ -479,7 +479,7 @@ class TestBfsFeaturedDatasets:
 
     @pytest.mark.asyncio
     async def test_schulamt_relevance_present(self):
-        from swiss_statistics_mcp.server import bfs_featured_datasets, ListThemesInput
+        from swiss_statistics_mcp.server import ListThemesInput, bfs_featured_datasets
 
         result = await bfs_featured_datasets(ListThemesInput(lang="de"))
         data = json.loads(result)
@@ -549,14 +549,14 @@ class TestLiveAPI:
 
     @pytest.mark.asyncio
     async def test_live_list_themes(self):
-        from swiss_statistics_mcp.server import bfs_list_themes, ListThemesInput
+        from swiss_statistics_mcp.server import ListThemesInput, bfs_list_themes
         result = await bfs_list_themes(ListThemesInput(lang="de"))
         data = json.loads(result)
         assert data["total_datasets"] > 600
 
     @pytest.mark.asyncio
     async def test_live_teacher_metadata(self):
-        from swiss_statistics_mcp.server import bfs_get_table_metadata, GetTableMetadataInput
+        from swiss_statistics_mcp.server import GetTableMetadataInput, bfs_get_table_metadata
         result = await bfs_get_table_metadata(
             GetTableMetadataInput(table_id="px-x-1504000000_173", lang="de")
         )
@@ -566,7 +566,7 @@ class TestLiveAPI:
 
     @pytest.mark.asyncio
     async def test_live_education_stats_teachers(self):
-        from swiss_statistics_mcp.server import bfs_education_stats, GetEducationStatsInput
+        from swiss_statistics_mcp.server import GetEducationStatsInput, bfs_education_stats
         result = await bfs_education_stats(
             GetEducationStatsInput(topic="teachers", canton="Zürich")
         )
@@ -576,7 +576,7 @@ class TestLiveAPI:
 
     @pytest.mark.asyncio
     async def test_live_population_zurich(self):
-        from swiss_statistics_mcp.server import bfs_population, GetPopulationInput
+        from swiss_statistics_mcp.server import GetPopulationInput, bfs_population
         result = await bfs_population(
             GetPopulationInput(region="Zürich", year="2024", breakdown="total")
         )
