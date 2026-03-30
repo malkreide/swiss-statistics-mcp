@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.0] - 2026-03-29
+
+### Added
+- Initial release
+- 9 tools for BFS STAT-TAB PxWeb API
+- 682 datasets across 21 themes
+- No authentication required
+
 ## [0.1.0] — 2026-03-08
 
 ### Added
