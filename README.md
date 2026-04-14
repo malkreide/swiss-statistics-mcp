@@ -15,6 +15,12 @@
 
 ---
 
+### Demo
+
+![Demo: Claude using bfs_education_stats](docs/assets/demo.svg)
+
+---
+
 ## Overview
 
 `swiss-statistics-mcp` provides AI-native access to the Swiss Federal Statistical Office (BFS) via the STAT-TAB PxWeb API, without authentication:
@@ -250,6 +256,17 @@ PYTHONPATH=src pytest tests/ -m "not live"
 # Integration tests (live API calls)
 pytest tests/ -m "live"
 ```
+
+---
+
+## Safety & Limits
+
+- **Read-only:** All tools perform HTTP GET requests only — no data is written, modified, or deleted.
+- **No personal data:** STAT-TAB returns aggregated statistical datasets. No personally identifiable information (PII) is processed or stored by this server.
+- **Rate limits:** The PxWeb API is a public endpoint without documented rate limits; avoid tight loops over the full 682-table catalogue. The server enforces a 30s timeout per request and caches the catalogue index for 1 hour.
+- **Data freshness:** BFS publishes updated figures periodically (not real-time). Figures reflect the state of the upstream database at query time.
+- **Terms of service:** Data is subject to the [BFS Terms of Use (OGD)](https://www.bfs.admin.ch/bfs/en/home/grundlagen/nutzungsbedingungen.html). All STAT-TAB data is published as Open Government Data and may be freely used with attribution.
+- **No guarantees:** This server is a community project, not affiliated with the Swiss Federal Statistical Office. Availability depends on the upstream BFS API.
 
 ---
 

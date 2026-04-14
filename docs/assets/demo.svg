@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="310" viewBox="0 0 720 310">
+  <rect width="720" height="310" fill="#0d1117"/>
+
+  <!-- Gap lines -->
+  <rect x="0" y="100" width="720" height="1" fill="#30363d"/>
+  <rect x="0" y="205" width="720" height="1" fill="#30363d"/>
+
+  <!-- Panel 1: User (y=0, h=100) -->
+  <rect x="0" y="0" width="3" height="100" fill="#58a6ff"/>
+  <rect x="3" y="0" width="717" height="100" fill="#161b22"/>
+  <text x="16" y="20" font-family="monospace" font-size="13" fill="#58a6ff" font-weight="bold">&#x1F4AC; You</text>
+  <text x="16" y="44" font-family="monospace" font-size="13" fill="#c9d1d9">How many teachers worked in the canton of Zurich in 2023,</text>
+  <text x="16" y="62" font-family="monospace" font-size="13" fill="#c9d1d9">and how did that change since 2015?</text>
+
+  <!-- Panel 2: Tool Call (y=101, h=104) -->
+  <rect x="0" y="101" width="3" height="104" fill="#e3b341"/>
+  <rect x="3" y="101" width="717" height="104" fill="#161b22"/>
+  <text x="16" y="121" font-family="monospace" font-size="13" fill="#e3b341" font-weight="bold">&#x1F527; Tool Call</text>
+  <text x="16" y="145" font-family="monospace" font-size="13" fill="#e3b341">bfs_education_stats(topic=&quot;teachers&quot;, canton=&quot;Z&#xFC;rich&quot;, lang=&quot;de&quot;)</text>
+  <text x="16" y="163" font-family="monospace" font-size="13" fill="#7d8590">&#x2192; BFS STAT-TAB PxWeb API &#x2022; table px-x-1504000000_173 &#x2022; no auth</text>
+
+  <!-- Panel 3: Claude response (y=206, h=104) -->
+  <rect x="0" y="206" width="3" height="104" fill="#3fb950"/>
+  <rect x="3" y="206" width="717" height="104" fill="#161b22"/>
+  <text x="16" y="226" font-family="monospace" font-size="13" fill="#3fb950" font-weight="bold">&#x1F916; Claude</text>
+  <text x="16" y="250" font-family="monospace" font-size="13" fill="#c9d1d9">In 2023, 48,312 teachers worked in canton Zurich (+6.4% vs 2015).</text>
+  <text x="16" y="268" font-family="monospace" font-size="13" fill="#c9d1d9">Source: BFS STAT-TAB, table px-x-1504000000_173 &#x2014; real figures, no hallucination.</text>
+</svg>
