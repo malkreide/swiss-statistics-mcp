@@ -176,6 +176,8 @@ Für den Einsatz via **claude.ai im Browser** (z.B. auf verwalteten Arbeitsplät
 | *«Vergleiche die Sozialhilfequote aller Kantone»* | `bfs_compare_cantons` |
 | *«Gibt es Daten zu Schulliegenschaften?»* | `bfs_search_tables` |
 
+[→ Weitere Anwendungsbeispiele nach Zielgruppe →](EXAMPLES.md)
+
 ---
 
 ## Themengebiete

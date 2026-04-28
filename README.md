@@ -176,6 +176,8 @@ For use via **claude.ai in the browser** (e.g. on managed workstations without l
 | *"Compare the social assistance rate across all cantons"* | `bfs_compare_cantons` |
 | *"Is there data on school buildings?"* | `bfs_search_tables` |
 
+[→ More use cases by audience →](EXAMPLES.md)
+
 ---
 
 ## Themes
