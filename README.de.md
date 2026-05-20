@@ -289,9 +289,27 @@ Dashboards und Error-Rate-Alerts indexieren. `MCP_LOG_LEVEL=DEBUG` für verbose,
 
 ---
 
+## Resilience
+
+Der Server absorbiert transiente BFS-API-Aussetzer, bevor sie das LLM erreichen:
+
+- **Retries** — `5xx`, `429` und Netzwerk-Fehler werden bis zu 3× mit
+  exponential backoff (0.5s → 4s) wiederholt. `4xx`-Fehler werden sofort
+  durchgereicht, damit Client-Bugs nicht maskiert werden. Konfigurierbar via
+  `MCP_RETRY_MAX_ATTEMPTS`, `MCP_RETRY_WAIT_INITIAL`, `MCP_RETRY_WAIT_MAX`.
+- **Metadaten-Cache** — Tabellen-Metadaten (Variablen, Wertebereiche,
+  last_updated) werden in-memory pro `(table_id, lang)` für 1h gecacht.
+  Erster Call wärmt den Cache, Folge-Calls antworten instant.
+- **Concurrency-Cap** — Fan-out Metadaten-Fetches in `bfs_list_tables_by_theme`
+  laufen parallel begrenzt durch `FANOUT_CONCURRENCY = 5`. Für `limit=20`
+  reduziert das die Wall-Clock von ~20s sequenziell auf ~4s, ohne die
+  Upstream-API zu überlasten.
+
+---
+
 ## Bekannte Einschränkungen
 
-- **PxWeb API:** Rate-Limiting bei schnellen aufeinanderfolgenden Abfragen; der Server nutzt einen 1-Stunden-Cache für den Katalogindex
+- **PxWeb API:** Rate-Limiting bei schnellen aufeinanderfolgenden Abfragen; der Server nutzt einen 1-Stunden-Cache für den Katalogindex sowie einen 1-Stunden-Cache für Tabellen-Metadaten
 - **Sprache:** Tabellentitel und Dimensionswerte sind standardmässig auf Deutsch; die Abdeckung in Französisch, Italienisch und Englisch variiert je Tabelle
 - **JSON-STAT2:** Komplexe Kreuztabellierungen können grosse Ergebnismengen liefern; Dimensionsfilter zur Eingrenzung verwenden
 

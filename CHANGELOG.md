@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Retry on transient BFS-API errors (`5xx`, `429`, network failures): up to
+  3 attempts with exponential backoff (0.5s → 4s). 4xx errors surface
+  immediately. Tunable via `MCP_RETRY_MAX_ATTEMPTS`, `MCP_RETRY_WAIT_INITIAL`,
+  `MCP_RETRY_WAIT_MAX` env vars. New dependency: `tenacity>=8.0.0`.
+  Addresses audit findings SEC-018, SCALE-002.
+- In-memory metadata cache per `(table_id, lang)` with 1h TTL. Used by
+  `bfs_get_table_metadata`, `bfs_list_tables_by_theme`, and
+  `bfs_compare_cantons` — repeat queries return instantly. Addresses
+  audit finding SCALE-003.
+- `bfs_list_tables_by_theme` now fans out metadata fetches in parallel
+  bounded by `FANOUT_CONCURRENCY = 5`. For `limit=20` this cuts wall-clock
+  from ~20s sequential to ~4s while staying friendly to the upstream API.
+  Addresses audit finding SCALE-004.
+
+### Added
 - Structured JSON logging on stderr: one `tool_start` and one `tool_end` event
   per tool call, with `rid` correlation id, `params_keys`, `status`,
   `duration_ms`, and `error_type` on failure. Level configurable via

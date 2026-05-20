@@ -16,6 +16,28 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 # ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _clear_caches():
+    """Clear module-level caches between tests so cache state from one test
+    cannot mask a mock in the next."""
+    from swiss_statistics_mcp.server import (
+        _catalog_cache,
+        _metadata_cache,
+        _metadata_timestamps,
+    )
+    _catalog_cache.clear()
+    _metadata_cache.clear()
+    _metadata_timestamps.clear()
+    yield
+    _catalog_cache.clear()
+    _metadata_cache.clear()
+    _metadata_timestamps.clear()
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -538,6 +560,183 @@ class TestInputValidation:
         from swiss_statistics_mcp.server import CompareCantonsInput
         with pytest.raises(Exception):
             CompareCantonsInput(table_id="px-x-1504000000_173", canton_values=["1"])
+
+
+# ---------------------------------------------------------------------------
+# Resilience tests (SEC-018, SCALE-002, SCALE-003, SCALE-004)
+# ---------------------------------------------------------------------------
+
+class TestRetry:
+    """Outbound BFS calls must retry on transient errors (5xx, network)
+    and surface 4xx immediately."""
+
+    @pytest.fixture(autouse=True)
+    def _fast_retries(self, monkeypatch):
+        # Keep retry attempts but make backoff effectively instant. The
+        # constants are read at module import for the decorator config,
+        # so we patch the module attributes the runtime uses.
+        import swiss_statistics_mcp.server as srv
+        monkeypatch.setattr(srv, "RETRY_WAIT_INITIAL", 0.001)
+        monkeypatch.setattr(srv, "RETRY_WAIT_MAX", 0.002)
+
+    @pytest.mark.asyncio
+    async def test_retries_on_503_then_succeeds(self, monkeypatch):
+        import httpx
+
+        from swiss_statistics_mcp.server import _get
+
+        success_payload = {"ok": True}
+        attempts = {"n": 0}
+
+        async def fake_handler(request: httpx.Request) -> httpx.Response:
+            attempts["n"] += 1
+            if attempts["n"] < 2:
+                return httpx.Response(503, request=request)
+            return httpx.Response(200, json=success_payload, request=request)
+
+        transport = httpx.MockTransport(fake_handler)
+        real_client = httpx.AsyncClient
+        monkeypatch.setattr(
+            httpx, "AsyncClient",
+            lambda **kw: real_client(transport=transport, **kw),
+        )
+
+        result = await _get("https://example.invalid/path")
+
+        assert result == success_payload
+        assert attempts["n"] == 2
+
+    @pytest.mark.asyncio
+    async def test_does_not_retry_on_400(self, monkeypatch):
+        import httpx
+
+        from swiss_statistics_mcp.server import _get
+
+        attempts = {"n": 0}
+
+        async def fake_handler(request: httpx.Request) -> httpx.Response:
+            attempts["n"] += 1
+            return httpx.Response(400, json={"error": "bad query"}, request=request)
+
+        transport = httpx.MockTransport(fake_handler)
+        real_client = httpx.AsyncClient
+        monkeypatch.setattr(
+            httpx, "AsyncClient",
+            lambda **kw: real_client(transport=transport, **kw),
+        )
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await _get("https://example.invalid/path")
+
+        assert attempts["n"] == 1, f"expected exactly one attempt on 4xx, got {attempts['n']}"
+
+    @pytest.mark.asyncio
+    async def test_gives_up_after_max_attempts(self, monkeypatch):
+        import httpx
+
+        import swiss_statistics_mcp.server as srv
+        monkeypatch.setattr(srv, "RETRY_MAX_ATTEMPTS", 3)
+
+        attempts = {"n": 0}
+
+        async def always_503(request: httpx.Request) -> httpx.Response:
+            attempts["n"] += 1
+            return httpx.Response(503, request=request)
+
+        transport = httpx.MockTransport(always_503)
+        real_client = httpx.AsyncClient
+        monkeypatch.setattr(
+            httpx, "AsyncClient",
+            lambda **kw: real_client(transport=transport, **kw),
+        )
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await srv._get("https://example.invalid/path")
+
+        assert attempts["n"] == 3
+
+
+class TestMetadataCache:
+    """Repeated metadata fetches for the same (table, lang) must hit the
+    in-memory cache instead of going to the network."""
+
+    @pytest.mark.asyncio
+    async def test_second_call_uses_cache(self):
+        from swiss_statistics_mcp.server import _fetch_metadata_cached
+
+        cached_meta = {"title": "Lehrkräfte", "variables": []}
+
+        with patch(
+            "swiss_statistics_mcp.server._get",
+            new_callable=AsyncMock,
+            return_value=cached_meta,
+        ) as mock_get:
+            r1 = await _fetch_metadata_cached("px-x-1504000000_173", "de")
+            r2 = await _fetch_metadata_cached("px-x-1504000000_173", "de")
+
+        assert r1 == cached_meta == r2
+        assert mock_get.call_count == 1, "expected exactly one upstream call"
+
+    @pytest.mark.asyncio
+    async def test_different_lang_misses_cache(self):
+        from swiss_statistics_mcp.server import _fetch_metadata_cached
+
+        with patch(
+            "swiss_statistics_mcp.server._get",
+            new_callable=AsyncMock,
+            return_value={"title": "x", "variables": []},
+        ) as mock_get:
+            await _fetch_metadata_cached("px-x-1504000000_173", "de")
+            await _fetch_metadata_cached("px-x-1504000000_173", "fr")
+
+        assert mock_get.call_count == 2
+
+
+class TestFanoutConcurrency:
+    """`bfs_list_tables_by_theme` fans out metadata fetches in parallel
+    bounded by FANOUT_CONCURRENCY."""
+
+    @pytest.mark.asyncio
+    async def test_parallel_metadata_fetches(self, monkeypatch):
+        """5 tables × 50ms each: sequential would be ~250ms,
+        parallel (concurrency=5) should be ~50ms. We assert a generous
+        upper bound to keep the test stable on slow CI."""
+        import asyncio as aio
+        import time as time_mod
+
+        from swiss_statistics_mcp.server import (
+            ListTablesByThemeInput,
+            bfs_list_tables_by_theme,
+        )
+
+        async def slow_meta(dbid: str, lang: str) -> dict:
+            await aio.sleep(0.05)
+            return {
+                "title": f"meta-{dbid}",
+                "updated": "2024",
+                "variables": [{"code": "Kanton"}],
+            }
+
+        # The first `_get` call inside `bfs_list_tables_by_theme` fetches
+        # the database index; later fan-out goes through the cached helper.
+        async def fake_get(url):
+            return _mock_all_dbs_response()
+
+        monkeypatch.setattr("swiss_statistics_mcp.server._get", fake_get)
+        monkeypatch.setattr(
+            "swiss_statistics_mcp.server._fetch_metadata_cached", slow_meta
+        )
+
+        t0 = time_mod.monotonic()
+        result = await bfs_list_tables_by_theme(
+            ListTablesByThemeInput(theme_code="15", limit=5)
+        )
+        elapsed = time_mod.monotonic() - t0
+
+        data = json.loads(result)
+        assert isinstance(data.get("tables"), list)
+        # 5× 50ms parallel ≈ 50ms; allow generous headroom for CI noise.
+        assert elapsed < 0.20, f"expected parallel fan-out, took {elapsed:.3f}s"
 
 
 # ---------------------------------------------------------------------------

@@ -287,9 +287,27 @@ or `WARNING` to suppress per-call events.
 
 ---
 
+## Resilience
+
+The server absorbs transient BFS-API hiccups before they reach the LLM:
+
+- **Retries** — `5xx`, `429`, and network errors are retried up to 3 times with
+  exponential backoff (0.5s → 4s). `4xx` errors surface immediately so client
+  bugs aren't masked. Tunable via `MCP_RETRY_MAX_ATTEMPTS`,
+  `MCP_RETRY_WAIT_INITIAL`, `MCP_RETRY_WAIT_MAX` env vars.
+- **Metadata cache** — Table metadata (variables, value domains, last_updated)
+  is cached in-memory per `(table_id, lang)` for 1h. Cold list/detail flows
+  warm the cache; subsequent calls return instantly.
+- **Concurrency cap** — Fan-out metadata fetches in `bfs_list_tables_by_theme`
+  run in parallel bounded by `FANOUT_CONCURRENCY = 5`. For `limit=20` this
+  cuts wall-clock from ~20s sequential to ~4s, without overwhelming the
+  upstream API.
+
+---
+
 ## Known Limitations
 
-- **PxWeb API:** Rate limiting may apply for rapid successive queries; the server uses a 1-hour cache for the catalogue index
+- **PxWeb API:** Rate limiting may apply for rapid successive queries; the server uses a 1-hour cache for the catalogue index and a 1-hour cache for table metadata
 - **Language:** Dataset titles and dimension values are in German by default; French, Italian and English coverage varies by table
 - **JSON-STAT2:** Some complex cross-tabulations may return large result sets; use dimension filters to narrow queries
 
