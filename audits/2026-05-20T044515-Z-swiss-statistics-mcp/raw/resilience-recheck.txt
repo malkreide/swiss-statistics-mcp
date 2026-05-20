@@ -1,0 +1,26 @@
+=== SEC-018: retry + tenacity ===
+29:from tenacity import (
+30:    AsyncRetrying,
+215:def _is_transient(exc: BaseException) -> bool:
+226:async def _retrying_http(coro_factory: Callable[[], Any]) -> Any:
+234:        async for attempt in AsyncRetrying(
+241:            retry=retry_if_exception(_is_transient),
+257:    return await _retrying_http(_do)
+267:    return await _retrying_http(_do)
+=== SCALE-002: backoff config ===
+34:    wait_exponential,
+61:RETRY_MAX_ATTEMPTS = int(os.environ.get("MCP_RETRY_MAX_ATTEMPTS", "3"))
+62:RETRY_WAIT_INITIAL = float(os.environ.get("MCP_RETRY_WAIT_INITIAL", "0.5"))
+63:RETRY_WAIT_MAX = float(os.environ.get("MCP_RETRY_WAIT_MAX", "4.0"))
+235:            stop=stop_after_attempt(RETRY_MAX_ATTEMPTS),
+=== SCALE-003: metadata cache ===
+45:METADATA_CACHE_TTL = 3600  # 1 hour
+298:_metadata_cache: dict[tuple[str, str], dict[str, Any]] = {}
+302:async def _fetch_metadata_cached(dbid: str, lang: str) -> dict[str, Any]:
+306:    if key in _metadata_cache and (now - cached_at) < METADATA_CACHE_TTL:
+307:        return _metadata_cache[key]
+=== SCALE-004: semaphore fan-out ===
+46:FANOUT_CONCURRENCY = 5  # parallel metadata fetches per fan-out tool call
+917:        # Fan-out metadata fetches with a Semaphore to avoid hammering BFS.
+920:        sem = asyncio.Semaphore(FANOUT_CONCURRENCY)
+940:        tables = await asyncio.gather(*(fetch_one(dbid) for dbid in selected))

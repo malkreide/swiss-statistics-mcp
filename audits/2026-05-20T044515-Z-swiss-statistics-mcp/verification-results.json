@@ -1,0 +1,187 @@
+{
+  "audit_meta": {
+    "server_name": "swiss-statistics-mcp",
+    "skill_version": "1.0.0",
+    "run_id": "2026-05-20T044515-Z-swiss-statistics-mcp",
+    "policy": "fail-or-partial",
+    "previous_run_id": "2026-05-20T033454-Z-swiss-statistics-mcp",
+    "previous_findings_count": 16
+  },
+  "results": {
+    "ARCH-001": {"status": "pass", "category": "ARCH", "severity": "medium",
+      "evidence": ["9 tools, consistent bfs_ snake_case naming, all docstrings 393-930 chars"]},
+    "ARCH-002": {"status": "pass", "category": "ARCH", "severity": "high",
+      "evidence": ["9 distinct tools covering catalog, search, metadata, data, convenience, comparison"]},
+    "ARCH-003": {"status": "pass", "category": "ARCH", "severity": "high",
+      "evidence": ["Multi-paragraph docstrings with parameter examples and follow-up hints"]},
+    "ARCH-004": {"status": "pass", "category": "ARCH", "severity": "high",
+      "evidence": ["Pydantic v2 with ConfigDict(extra='forbid'), regex patterns, ge/le bounds"]},
+    "ARCH-005": {"status": "pass", "category": "ARCH", "severity": "medium",
+      "evidence": [
+        "v0.2.0: every tool returns typed Pydantic model (server.py:811,882,978,1061,1167,1349,1441,1570,1674)",
+        "FastMCP serializes as structured content, output_schema auto-generated",
+        "Result types: ListThemesResult, ListTablesByThemeResult, SearchTablesResult, TableMetadataResult, DataTableResult, FeaturedDatasetsResult"
+      ]},
+    "ARCH-006": {"status": "pass", "category": "ARCH", "severity": "medium",
+      "evidence": ["Errors now structured via Result.error/.hint; 404 still distinguished from 500"]},
+    "ARCH-007": {"status": "pass", "category": "ARCH", "severity": "medium",
+      "evidence": ["next_step hints in tool responses guide LLM to follow-up tools"]},
+    "ARCH-008": {"status": "pass", "category": "ARCH", "severity": "high",
+      "evidence": ["All tools read-only GET/POST against public BFS API"]},
+    "ARCH-009": {"status": "pass", "category": "ARCH", "severity": "medium",
+      "evidence": [
+        "DataTableResult.truncated: bool, .rows_total, .rows_returned as first-class fields (server.py:685-687)",
+        "Computed in _format_jsonstat2_as_table at the source (server.py:758-773)",
+        "Original German prose preserved in .note for human display only"
+      ]},
+    "ARCH-011": {"status": "pass", "category": "ARCH", "severity": "medium",
+      "evidence": ["src/ layout, pyproject.toml, tests/, .github/workflows/, LICENSE, README.md + README.de.md, CHANGELOG.md"]},
+    "ARCH-012": {"status": "pass", "category": "ARCH", "severity": "medium",
+      "evidence": ["docs/assets/demo.svg, README Architecture section, anchor demo query, Maturity section"]},
+    "SDK-001": {"status": "pass", "category": "SDK", "severity": "high",
+      "evidence": ["from mcp.server.fastmcp import FastMCP, mcp[cli]>=1.0.0"]},
+    "SDK-002": {"status": "pass", "category": "SDK", "severity": "medium",
+      "evidence": ["pydantic>=2.0.0, BaseModel with extra='forbid' on every input AND output model"]},
+    "SDK-003": {"status": "pass", "category": "SDK", "severity": "medium",
+      "evidence": ["Async/await consistently used, all I/O via httpx.AsyncClient + tenacity AsyncRetrying"]},
+    "SDK-004": {"status": "pass", "category": "SDK", "severity": "high",
+      "evidence": [
+        "Default host = 127.0.0.1 (server.py:1746)",
+        "MCP_HOST env var + --host CLI for explicit opt-in to 0.0.0.0",
+        "README has security warning before Render.com cloud deployment section",
+        "TestTransportBinding::test_default_host_is_loopback pins the contract"
+      ]},
+    "SEC-004": {"status": "pass", "category": "SEC", "severity": "critical",
+      "evidence": ["No os.environ/API_KEY/SECRET handling (no secrets needed for OGD)"]},
+    "SEC-005": {"status": "pass", "category": "SEC", "severity": "high",
+      "evidence": ["No exec/eval/subprocess/os.system/shell=True anywhere in src/"]},
+    "SEC-006": {"status": "pass", "category": "SEC", "severity": "high",
+      "evidence": ["All inputs validated by Pydantic with regex patterns and bounded numerics"]},
+    "SEC-007": {"status": "pass", "category": "SEC", "severity": "high",
+      "evidence": ["URL construction uses Pydantic-validated values; table_id has BFS_TABLE_ID_PATTERN"]},
+    "SEC-008": {"status": "pass", "category": "SEC", "severity": "high",
+      "evidence": [
+        "BFS_TABLE_ID_PATTERN = r'^px-[a-z]-\\d{8,12}_\\d{1,4}$' (server.py:56)",
+        "Applied at 3 Pydantic Field sites: GetTableMetadataInput, GetDataInput, CompareCantonsInput (lines 432, 459, 540)",
+        "9 parametrized reject tests cover ../etc/passwd, shell metacharacters, URL-encoded traversal, etc."
+      ]},
+    "SEC-009": {"status": "pass", "category": "SEC", "severity": "medium",
+      "evidence": ["httpx default TLS verify; BFS endpoint is HTTPS-only"]},
+    "SEC-013": {"status": "pass", "category": "SEC", "severity": "high",
+      "evidence": ["No filesystem writes, no temp files, no uploads"]},
+    "SEC-014": {"status": "pass", "category": "SEC", "severity": "high",
+      "evidence": [
+        "stdlib logging configured with JSON formatter to stderr (server.py:66-103)",
+        "Every tool call emits tool_start + tool_end events with rid, params_keys, duration_ms, status",
+        "8 _LOGGER.exception calls in catch-all blocks + 2 _LOGGER.warning in silent fallbacks"
+      ]},
+    "SEC-015": {"status": "pass", "category": "SEC", "severity": "medium",
+      "evidence": ["No PII in responses (statistical aggregates only); params_keys logged keys-only"]},
+    "SEC-016": {"status": "pass", "category": "SEC", "severity": "critical",
+      "evidence": ["No hardcoded secret patterns; bandit -r src/ -ll → 0 issues in CI"]},
+    "SEC-018": {"status": "pass", "category": "SEC", "severity": "high",
+      "evidence": [
+        "tenacity AsyncRetrying with _is_transient predicate (5xx, 429, network errors)",
+        "Exponential backoff 0.5..4s, 3 attempts default, env-configurable",
+        "asyncio.Semaphore(FANOUT_CONCURRENCY=5) caps parallelism in bfs_list_tables_by_theme",
+        "6 new resilience tests: TestRetry, TestMetadataCache, TestFanoutConcurrency"
+      ]},
+    "SEC-019": {"status": "pass", "category": "SEC", "severity": "high",
+      "evidence": ["URL host hard-coded BFS_API_BASE; only path segments user-controlled, all regex-validated"]},
+    "SEC-020": {"status": "pass", "category": "SEC", "severity": "medium",
+      "evidence": ["FastMCP defaults; HTTP only on opt-in 0.0.0.0"]},
+    "SEC-021": {"status": "pass", "category": "SEC", "severity": "medium",
+      "evidence": ["Pydantic rejects malformed payloads before tool body executes"]},
+    "SEC-022": {"status": "pass", "category": "SEC", "severity": "high",
+      "evidence": [
+        "All 8 catch-all blocks log via _LOGGER.exception, return generic client message",
+        "Zero {type(e).__name__}: {e} leak-patterns remain (grep verified)",
+        "TestErrorSanitization::test_unexpected_error_does_not_leak_internals pins the contract"
+      ]},
+    "SCALE-001": {"status": "pass", "category": "SCALE", "severity": "high",
+      "evidence": ["httpx timeout=30s on every outbound request"]},
+    "SCALE-002": {"status": "pass", "category": "SCALE", "severity": "medium",
+      "evidence": [
+        "tenacity retry on TimeoutException, ConnectError, ReadError, WriteError + HTTP 429/500/502/503/504",
+        "wait_exponential(multiplier=0.5, min=0.5, max=4.0) default"
+      ]},
+    "SCALE-003": {"status": "pass", "category": "SCALE", "severity": "medium",
+      "evidence": [
+        "_metadata_cache + _metadata_timestamps dicts with 1h TTL (server.py:298)",
+        "_fetch_metadata_cached used in bfs_get_table_metadata, bfs_list_tables_by_theme, bfs_compare_cantons",
+        "TestMetadataCache verifies single upstream call for repeat fetches"
+      ]},
+    "SCALE-004": {"status": "pass", "category": "SCALE", "severity": "medium",
+      "evidence": [
+        "asyncio.Semaphore(5) + asyncio.gather in bfs_list_tables_by_theme fan-out (server.py:920-940)",
+        "TestFanoutConcurrency::test_parallel_metadata_fetches verifies 5x50ms parallel < 200ms"
+      ]},
+    "SCALE-006": {"status": "pass", "category": "SCALE", "severity": "medium",
+      "evidence": ["max_rows hard cap of 5000 prevents unbounded responses; default 500"]},
+    "OBS-001": {"status": "pass", "category": "OBS", "severity": "high",
+      "evidence": [
+        "stdlib logging.getLogger('swiss_statistics_mcp') configured with JSON formatter (server.py:66-103)",
+        "MCP_LOG_LEVEL env var (default INFO)",
+        "14 _LOGGER references in src/"
+      ]},
+    "OBS-002": {"status": "pass", "category": "OBS", "severity": "medium",
+      "evidence": [
+        "uuid.uuid4().hex[:8] correlation id per tool call (server.py:120)",
+        "Same rid on tool_start and tool_end events for pairing"
+      ]},
+    "OBS-003": {"status": "pass", "category": "OBS", "severity": "medium",
+      "evidence": [
+        "duration_ms field on every tool_end event (server.py:139, 149)",
+        "Metric-derivable from log aggregation in any cloud platform"
+      ]},
+    "OBS-004": {"status": "pass", "category": "OBS", "severity": "high",
+      "evidence": [
+        "8 catch-all blocks now log via _LOGGER.exception (full trace to stderr)",
+        "2 silent fallback loops now log via _LOGGER.warning(..., exc_info=True)"
+      ]},
+    "OBS-006": {"status": "pass", "category": "OBS", "severity": "medium",
+      "evidence": ["README has Observability section (DE + EN) documenting log fields and env vars"]},
+    "OPS-001": {"status": "pass", "category": "OPS", "severity": "high",
+      "evidence": [
+        ".github/workflows/ci.yml has dedicated `security` job",
+        "bandit -r src/ -ll (Medium+ severity gate)",
+        "pip-audit for CVE gate (with pip upgrade to eliminate host-tool noise)",
+        "dev-deps include bandit>=1.7.0 and pip-audit>=2.7.0"
+      ]},
+    "OPS-002": {"status": "pass", "category": "OPS", "severity": "medium",
+      "evidence": ["README.md + README.de.md cover install/quickstart/tools/observability/resilience/maturity; CHANGELOG present with Keep-a-Changelog format"]},
+    "OPS-003": {"status": "pass", "category": "OPS", "severity": "medium",
+      "evidence": [
+        "README has 'Maturity' / 'Reifegrad' section calling out Alpha 0.x policy (DE + EN)",
+        "Cloud deployments recommended to pin git tags, not main",
+        "Version 0.2.0 in pyproject.toml"
+      ]},
+    "CH-004": {"status": "pass", "category": "CH", "severity": "medium",
+      "evidence": ["README explicitly cites BFS OGD licence with link to nutzungsbedingungen.html"]},
+
+    "ARCH-010": {"status": "n/a", "category": "ARCH", "severity": "critical"},
+    "CH-001": {"status": "n/a", "category": "CH", "severity": "high"},
+    "CH-002": {"status": "n/a", "category": "CH", "severity": "critical"},
+    "CH-003": {"status": "n/a", "category": "CH", "severity": "high"},
+    "CH-005": {"status": "n/a", "category": "CH", "severity": "high"},
+    "CH-006": {"status": "n/a", "category": "CH", "severity": "high"},
+    "CH-007": {"status": "n/a", "category": "CH", "severity": "medium"},
+    "CH-008": {"status": "n/a", "category": "CH", "severity": "critical"},
+    "HITL-001": {"status": "n/a", "category": "HITL", "severity": "high"},
+    "HITL-002": {"status": "n/a", "category": "HITL", "severity": "high"},
+    "HITL-003": {"status": "n/a", "category": "HITL", "severity": "critical"},
+    "HITL-004": {"status": "n/a", "category": "HITL", "severity": "medium"},
+    "HITL-005": {"status": "n/a", "category": "HITL", "severity": "critical"},
+    "OBS-005": {"status": "n/a", "category": "OBS", "severity": "medium"},
+    "SCALE-005": {"status": "n/a", "category": "SCALE", "severity": "medium"},
+    "SDK-005": {"status": "n/a", "category": "SDK", "severity": "high"},
+    "SEC-001": {"status": "n/a", "category": "SEC", "severity": "critical"},
+    "SEC-002": {"status": "n/a", "category": "SEC", "severity": "critical"},
+    "SEC-003": {"status": "n/a", "category": "SEC", "severity": "high"},
+    "SEC-010": {"status": "n/a", "category": "SEC", "severity": "critical"},
+    "SEC-011": {"status": "n/a", "category": "SEC", "severity": "high"},
+    "SEC-012": {"status": "n/a", "category": "SEC", "severity": "high"},
+    "SEC-017": {"status": "n/a", "category": "SEC", "severity": "high"},
+    "SEC-023": {"status": "n/a", "category": "SEC", "severity": "high"}
+  }
+}

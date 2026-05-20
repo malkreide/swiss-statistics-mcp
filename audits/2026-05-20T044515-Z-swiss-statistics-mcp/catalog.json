@@ -1,0 +1,682 @@
+{
+  "ARCH-001": {
+    "id": "ARCH-001",
+    "title": "Tool Naming Convention",
+    "category": "ARCH",
+    "severity": "medium",
+    "applies_when": "always",
+    "pdf_ref": "Sec 2.2",
+    "evidence_required": "2",
+    "_source": "ARCH-001.md"
+  },
+  "ARCH-002": {
+    "id": "ARCH-002",
+    "title": "Tool-Beschreibung mit Use-Case-Tags",
+    "category": "ARCH",
+    "severity": "medium",
+    "applies_when": "always",
+    "pdf_ref": "Sec 2.2",
+    "evidence_required": "2",
+    "_source": "ARCH-002.md"
+  },
+  "ARCH-003": {
+    "id": "ARCH-003",
+    "title": "«Not Found» Anti-Pattern: Heuristiken statt leerer Antworten",
+    "category": "ARCH",
+    "severity": "medium",
+    "applies_when": "always",
+    "pdf_ref": "Sec 2.2",
+    "evidence_required": "2",
+    "_source": "ARCH-003.md"
+  },
+  "ARCH-004": {
+    "id": "ARCH-004",
+    "title": "Inversion of Control: Transport-agnostische Server-Logik",
+    "category": "ARCH",
+    "severity": "high",
+    "applies_when": "always",
+    "pdf_ref": "Sec 2.1",
+    "evidence_required": "3",
+    "_source": "ARCH-004.md"
+  },
+  "ARCH-005": {
+    "id": "ARCH-005",
+    "title": "Keine Hardcoded Secrets: Env-Vars / Secret Manager only",
+    "category": "ARCH",
+    "severity": "critical",
+    "applies_when": "always",
+    "pdf_ref": "Sec 2.1",
+    "evidence_required": "3",
+    "_source": "ARCH-005.md"
+  },
+  "ARCH-006": {
+    "id": "ARCH-006",
+    "title": "Tool-Budget: High-Level-Use-Cases statt API-Mapping 1:1",
+    "category": "ARCH",
+    "severity": "high",
+    "applies_when": "always",
+    "pdf_ref": "Sec 2.3",
+    "evidence_required": "2",
+    "_source": "ARCH-006.md"
+  },
+  "ARCH-007": {
+    "id": "ARCH-007",
+    "title": "Capability-Aggregation: Composability intern, Atomarität extern",
+    "category": "ARCH",
+    "severity": "medium",
+    "applies_when": "always",
+    "pdf_ref": "Sec 2.3",
+    "evidence_required": "2",
+    "_source": "ARCH-007.md"
+  },
+  "ARCH-008": {
+    "id": "ARCH-008",
+    "title": "Drei Primitive nutzen: Tools, Resources und Prompts",
+    "category": "ARCH",
+    "severity": "medium",
+    "applies_when": "always",
+    "pdf_ref": "Anhang A2",
+    "evidence_required": "2",
+    "_source": "ARCH-008.md"
+  },
+  "ARCH-009": {
+    "id": "ARCH-009",
+    "title": "Tool Annotations: readOnlyHint, destructiveHint, idempotentHint, openWorldHint",
+    "category": "ARCH",
+    "severity": "high",
+    "applies_when": "always",
+    "pdf_ref": "Anhang A5",
+    "evidence_required": "2",
+    "_source": "ARCH-009.md"
+  },
+  "ARCH-010": {
+    "id": "ARCH-010",
+    "title": "Idempotency-Keys und Compensating Actions statt Transaktionen",
+    "category": "ARCH",
+    "severity": "critical",
+    "applies_when": "write_capable == true",
+    "pdf_ref": "Anhang A6",
+    "evidence_required": "4",
+    "_source": "ARCH-010.md"
+  },
+  "ARCH-011": {
+    "id": "ARCH-011",
+    "title": "Standardisierte Repo-Struktur (src-Layout, tests, README.de.md)",
+    "category": "ARCH",
+    "severity": "medium",
+    "applies_when": "always",
+    "pdf_ref": "Anhang A8",
+    "evidence_required": "3",
+    "_source": "ARCH-011.md"
+  },
+  "ARCH-012": {
+    "id": "ARCH-012",
+    "title": "protocolVersion-Pinning + CHANGELOG + SDK-Update-Disziplin",
+    "category": "ARCH",
+    "severity": "medium",
+    "applies_when": "always",
+    "pdf_ref": "Anhang A9",
+    "evidence_required": "3",
+    "_source": "ARCH-012.md"
+  },
+  "CH-001": {
+    "id": "CH-001",
+    "title": "DSG/EDÖB: Datenresidenz Schweiz/EU",
+    "category": "CH",
+    "severity": "high",
+    "applies_when": "data_class != \"Public Open Data\"",
+    "pdf_ref": "Custom (DSG nFADP, EDÖB-Empfehlungen)",
+    "evidence_required": "3",
+    "_source": "CH-001.md"
+  },
+  "CH-002": {
+    "id": "CH-002",
+    "title": "DSG-konforme Personendaten-Verarbeitung mit Rechtsgrundlage",
+    "category": "CH",
+    "severity": "critical",
+    "applies_when": "data_class == \"PII\"",
+    "pdf_ref": "Custom (revDSG Art. 6, 31)",
+    "evidence_required": "4",
+    "_source": "CH-002.md"
+  },
+  "CH-003": {
+    "id": "CH-003",
+    "title": "Lehrpersonen-Einwilligung bei Volksschule-Daten",
+    "category": "CH",
+    "severity": "high",
+    "applies_when": "volksschule_context == true and data_class == \"PII\"",
+    "pdf_ref": "Custom (revDSG + Volksschulgesetz Kanton Zürich)",
+    "evidence_required": "3",
+    "_source": "CH-003.md"
+  },
+  "CH-004": {
+    "id": "CH-004",
+    "title": "OGD-CH Lizenz-Compliance: CC BY 4.0 Attribution",
+    "category": "CH",
+    "severity": "medium",
+    "applies_when": "data_source.is_swiss_open_data == true",
+    "pdf_ref": "Custom (OGD-CH-Richtlinien)",
+    "evidence_required": "2",
+    "_source": "CH-004.md"
+  },
+  "CH-005": {
+    "id": "CH-005",
+    "title": "ISDS Stadt Zürich Schutzbedarfsklasse-Mapping",
+    "category": "CH",
+    "severity": "high",
+    "applies_when": "stadt_zuerich_context == true",
+    "pdf_ref": "Custom (ISDS-Richtlinie Stadt Zürich)",
+    "evidence_required": "3",
+    "_source": "CH-005.md"
+  },
+  "CH-006": {
+    "id": "CH-006",
+    "title": "Schulamt Klassifikationsschema: BUI/Vertraulich/Streng-Vertraulich",
+    "category": "CH",
+    "severity": "high",
+    "applies_when": "schulamt_context == true",
+    "pdf_ref": "Custom (Stadt Zürich Klassifikations-Schema)",
+    "evidence_required": "2",
+    "_source": "CH-006.md"
+  },
+  "CH-007": {
+    "id": "CH-007",
+    "title": "Datenresidenz Backup-Region (Schweiz/EU)",
+    "category": "CH",
+    "severity": "medium",
+    "applies_when": "data_class != \"Public Open Data\"",
+    "pdf_ref": "Custom (revDSG Art. 16)",
+    "evidence_required": "2",
+    "_source": "CH-007.md"
+  },
+  "CH-008": {
+    "id": "CH-008",
+    "title": "EDÖB-Meldepflicht bei Datenschutz-Verletzungen",
+    "category": "CH",
+    "severity": "critical",
+    "applies_when": "data_class != \"Public Open Data\"",
+    "pdf_ref": "Custom (revDSG Art. 24)",
+    "evidence_required": "3",
+    "_source": "CH-008.md"
+  },
+  "HITL-001": {
+    "id": "HITL-001",
+    "title": "Sampling Request Review: User-UI vor LLM-Send",
+    "category": "HITL",
+    "severity": "high",
+    "applies_when": "uses_sampling == true",
+    "pdf_ref": "Sec 7.2",
+    "evidence_required": "2",
+    "_source": "HITL-001.md"
+  },
+  "HITL-002": {
+    "id": "HITL-002",
+    "title": "Sampling Response Review: Verifikation vor Server-Übergabe",
+    "category": "HITL",
+    "severity": "high",
+    "applies_when": "uses_sampling == true",
+    "pdf_ref": "Sec 7.2",
+    "evidence_required": "2",
+    "_source": "HITL-002.md"
+  },
+  "HITL-003": {
+    "id": "HITL-003",
+    "title": "Data Redaction: PII-Filter vor LLM-Send",
+    "category": "HITL",
+    "severity": "critical",
+    "applies_when": "data_class != \"Public Open Data\" and uses_sampling == true",
+    "pdf_ref": "Sec 7.2",
+    "evidence_required": "3",
+    "_source": "HITL-003.md"
+  },
+  "HITL-004": {
+    "id": "HITL-004",
+    "title": "Sequential Thinking Object-Sanitization gegen Key-Leaks",
+    "category": "HITL",
+    "severity": "medium",
+    "applies_when": "uses_sequential_thinking == true",
+    "pdf_ref": "Sec 7.3",
+    "evidence_required": "2",
+    "_source": "HITL-004.md"
+  },
+  "HITL-005": {
+    "id": "HITL-005",
+    "title": "Destructive Operation Confirmation",
+    "category": "HITL",
+    "severity": "critical",
+    "applies_when": "write_capable == true",
+    "pdf_ref": "Sec 7.2",
+    "evidence_required": "3",
+    "_source": "HITL-005.md"
+  },
+  "OBS-001": {
+    "id": "OBS-001",
+    "title": "Protocol vs. Execution Errors: korrekte Trennung",
+    "category": "OBS",
+    "severity": "high",
+    "applies_when": "always",
+    "pdf_ref": "Sec 6.1",
+    "evidence_required": "2",
+    "_source": "OBS-001.md"
+  },
+  "OBS-002": {
+    "id": "OBS-002",
+    "title": "Mask Error Details: keine Stacktraces / SQL ans LLM",
+    "category": "OBS",
+    "severity": "high",
+    "applies_when": "always",
+    "pdf_ref": "Sec 6.2",
+    "evidence_required": "2",
+    "_source": "OBS-002.md"
+  },
+  "OBS-003": {
+    "id": "OBS-003",
+    "title": "Structured Logging mit RFC 5424 Severity-Stufen",
+    "category": "OBS",
+    "severity": "medium",
+    "applies_when": "always",
+    "pdf_ref": "Sec 6.3",
+    "evidence_required": "2",
+    "_source": "OBS-003.md"
+  },
+  "OBS-004": {
+    "id": "OBS-004",
+    "title": "stderr für stdio-Server: stdout reserviert für Protocol",
+    "category": "OBS",
+    "severity": "critical",
+    "applies_when": "transport == \"stdio-only\" or transport == \"dual\"",
+    "pdf_ref": "Sec 6.3",
+    "evidence_required": "2",
+    "_source": "OBS-004.md"
+  },
+  "OBS-005": {
+    "id": "OBS-005",
+    "title": "SIEM-Integration für Audit-Logs (Datadog/Splunk)",
+    "category": "OBS",
+    "severity": "medium",
+    "applies_when": "is_cloud_deployed == true and data_class != \"Public Open Data\"",
+    "pdf_ref": "Sec 6.3",
+    "evidence_required": "2",
+    "_source": "OBS-005.md"
+  },
+  "OBS-006": {
+    "id": "OBS-006",
+    "title": "OpenTelemetry Distributed Tracing pro Tool-Call",
+    "category": "OBS",
+    "severity": "medium",
+    "applies_when": "is_cloud_deployed == true",
+    "pdf_ref": "Anhang B10",
+    "evidence_required": "3",
+    "_source": "OBS-006.md"
+  },
+  "OPS-001": {
+    "id": "OPS-001",
+    "title": "Test-Strategie: Unit-Tests mocked + Live-Tests gemarkert",
+    "category": "OPS",
+    "severity": "high",
+    "applies_when": "always",
+    "pdf_ref": "Anhang C1",
+    "evidence_required": "4",
+    "_source": "OPS-001.md"
+  },
+  "OPS-002": {
+    "id": "OPS-002",
+    "title": "Doku-Standard: bilingualer README, ASCII-Diagramm, Limits-Sektion",
+    "category": "OPS",
+    "severity": "medium",
+    "applies_when": "always",
+    "pdf_ref": "Anhang C2",
+    "evidence_required": "4",
+    "_source": "OPS-002.md"
+  },
+  "OPS-003": {
+    "id": "OPS-003",
+    "title": "Phasenarchitektur: Read-only First, dann Write, dann Multi-Agent",
+    "category": "OPS",
+    "severity": "high",
+    "applies_when": "always",
+    "pdf_ref": "Anhang C4",
+    "evidence_required": "3",
+    "_source": "OPS-003.md"
+  },
+  "SCALE-001": {
+    "id": "SCALE-001",
+    "title": "Streamable HTTP statt stdio für Cloud-Deployments",
+    "category": "SCALE",
+    "severity": "high",
+    "applies_when": "deployment.includes(\"Railway\") or deployment.includes(\"Render\") or deployment.includes(\"andere\")",
+    "pdf_ref": "Sec 5.1",
+    "evidence_required": "2",
+    "_source": "SCALE-001.md"
+  },
+  "SCALE-002": {
+    "id": "SCALE-002",
+    "title": "Stateful Load Balancing für Streamable HTTP / SSE",
+    "category": "SCALE",
+    "severity": "high",
+    "applies_when": "transport == \"HTTP/SSE\" or transport == \"dual\"",
+    "pdf_ref": "Sec 5.2",
+    "evidence_required": "2",
+    "_source": "SCALE-002.md"
+  },
+  "SCALE-003": {
+    "id": "SCALE-003",
+    "title": "Mcp-Session-Id Routing via Edge-LB (HAProxy Stick-Tables)",
+    "category": "SCALE",
+    "severity": "high",
+    "applies_when": "(transport == \"HTTP/SSE\" or transport == \"dual\") and is_cloud_deployed == true",
+    "pdf_ref": "Sec 5.2",
+    "evidence_required": "2",
+    "_source": "SCALE-003.md"
+  },
+  "SCALE-004": {
+    "id": "SCALE-004",
+    "title": "Containerization mit Multi-Stage-Builds",
+    "category": "SCALE",
+    "severity": "medium",
+    "applies_when": "is_cloud_deployed == true",
+    "pdf_ref": "Sec 5.3",
+    "evidence_required": "2",
+    "_source": "SCALE-004.md"
+  },
+  "SCALE-005": {
+    "id": "SCALE-005",
+    "title": "MCP-Gateway für Enterprise (Anti-Shadow-MCP)",
+    "category": "SCALE",
+    "severity": "medium",
+    "applies_when": "enterprise_context == true or stadt_zuerich_context == true",
+    "pdf_ref": "Sec 5.3",
+    "evidence_required": "2",
+    "_source": "SCALE-005.md"
+  },
+  "SCALE-006": {
+    "id": "SCALE-006",
+    "title": "Resource-Limits per Container (Memory, CPU, FDs)",
+    "category": "SCALE",
+    "severity": "medium",
+    "applies_when": "is_cloud_deployed == true",
+    "pdf_ref": "Sec 5.3",
+    "evidence_required": "2",
+    "_source": "SCALE-006.md"
+  },
+  "SDK-001": {
+    "id": "SDK-001",
+    "title": "FastMCP Lifespan via @asynccontextmanager + AsyncExitStack",
+    "category": "SDK",
+    "severity": "high",
+    "applies_when": "sdk_language == \"Python\"",
+    "pdf_ref": "Sec 3.1",
+    "evidence_required": "2",
+    "_source": "SDK-001.md"
+  },
+  "SDK-002": {
+    "id": "SDK-002",
+    "title": "Pydantic v2 / TypedDict / Dataclass als Tool-Returns",
+    "category": "SDK",
+    "severity": "medium",
+    "applies_when": "sdk_language == \"Python\"",
+    "pdf_ref": "Sec 3.1",
+    "evidence_required": "2",
+    "_source": "SDK-002.md"
+  },
+  "SDK-003": {
+    "id": "SDK-003",
+    "title": "Context Injection für Progress Reports und Logging",
+    "category": "SDK",
+    "severity": "medium",
+    "applies_when": "sdk_language == \"Python\"",
+    "pdf_ref": "Sec 3.1",
+    "evidence_required": "2",
+    "_source": "SDK-003.md"
+  },
+  "SDK-004": {
+    "id": "SDK-004",
+    "title": "CORS Mcp-Session-Id Exposure bei HTTP/SSE",
+    "category": "SDK",
+    "severity": "high",
+    "applies_when": "sdk_language == \"Python\" and (transport == \"HTTP/SSE\" or transport == \"dual\")",
+    "pdf_ref": "Sec 3.1",
+    "evidence_required": "2",
+    "_source": "SDK-004.md"
+  },
+  "SDK-005": {
+    "id": "SDK-005",
+    "title": "TypeScript Strict Mode + Zod Runtime Validation",
+    "category": "SDK",
+    "severity": "high",
+    "applies_when": "sdk_language == \"TypeScript\"",
+    "pdf_ref": "Sec 3.2",
+    "evidence_required": "3",
+    "_source": "SDK-005.md"
+  },
+  "SEC-001": {
+    "id": "SEC-001",
+    "title": "Confused Deputy: Per-Client Consent Flow",
+    "category": "SEC",
+    "severity": "critical",
+    "applies_when": "auth_model == \"OAuth-Proxy\"",
+    "pdf_ref": "Sec 4.1",
+    "evidence_required": "4",
+    "_source": "SEC-001.md"
+  },
+  "SEC-002": {
+    "id": "SEC-002",
+    "title": "Token Passthrough Prohibition (RFC 8707 Audience Validation)",
+    "category": "SEC",
+    "severity": "critical",
+    "applies_when": "auth_model == \"OAuth-Proxy\" or auth_model == \"API-Key\"",
+    "pdf_ref": "Sec 4.2",
+    "evidence_required": "3",
+    "_source": "SEC-002.md"
+  },
+  "SEC-003": {
+    "id": "SEC-003",
+    "title": "Progressive Scope-Minimierung: Least-Privilege-Modell",
+    "category": "SEC",
+    "severity": "high",
+    "applies_when": "auth_model != \"none\"",
+    "pdf_ref": "Sec 4.3",
+    "evidence_required": "3",
+    "_source": "SEC-003.md"
+  },
+  "SEC-004": {
+    "id": "SEC-004",
+    "title": "SSRF-Prevention: HTTPS-Enforcement + IP-Blocklisting",
+    "category": "SEC",
+    "severity": "critical",
+    "applies_when": "transport != \"stdio-only\" or tools_make_external_requests == true",
+    "pdf_ref": "Sec 4.4",
+    "evidence_required": "3",
+    "_source": "SEC-004.md"
+  },
+  "SEC-005": {
+    "id": "SEC-005",
+    "title": "DNS-Rebinding-Prevention: DNS-Pinning gegen TOCTOU",
+    "category": "SEC",
+    "severity": "high",
+    "applies_when": "transport != \"stdio-only\" and tools_make_external_requests == true",
+    "pdf_ref": "Sec 4.4",
+    "evidence_required": "2",
+    "_source": "SEC-005.md"
+  },
+  "SEC-006": {
+    "id": "SEC-006",
+    "title": "Lokaler Server: stdio-Transport zwingend (Netzwerk-Isolation)",
+    "category": "SEC",
+    "severity": "high",
+    "applies_when": "deployment.includes(\"local-stdio\")",
+    "pdf_ref": "Sec 4.5",
+    "evidence_required": "2",
+    "_source": "SEC-006.md"
+  },
+  "SEC-007": {
+    "id": "SEC-007",
+    "title": "Container-Sandboxing: Docker / chroot mit minimalen Privilegien",
+    "category": "SEC",
+    "severity": "high",
+    "applies_when": "deployment.includes(\"local-stdio\") or deployment.includes(\"Railway\") or deployment.includes(\"Render\")",
+    "pdf_ref": "Sec 4.5",
+    "evidence_required": "3",
+    "_source": "SEC-007.md"
+  },
+  "SEC-008": {
+    "id": "SEC-008",
+    "title": "Pre-Configuration Consent für Local-Server-Installation",
+    "category": "SEC",
+    "severity": "medium",
+    "applies_when": "deployment.includes(\"local-stdio\")",
+    "pdf_ref": "Sec 4.5",
+    "evidence_required": "2",
+    "_source": "SEC-008.md"
+  },
+  "SEC-009": {
+    "id": "SEC-009",
+    "title": "Session-ID Cryptographic Binding (user_id:session_id)",
+    "category": "SEC",
+    "severity": "critical",
+    "applies_when": "transport != \"stdio-only\"",
+    "pdf_ref": "Sec 4.6",
+    "evidence_required": "3",
+    "_source": "SEC-009.md"
+  },
+  "SEC-010": {
+    "id": "SEC-010",
+    "title": "OAuth State Parameter: Single-Use, max 10min TTL",
+    "category": "SEC",
+    "severity": "critical",
+    "applies_when": "auth_model == \"OAuth-Proxy\"",
+    "pdf_ref": "Sec 4.1",
+    "evidence_required": "4",
+    "_source": "SEC-010.md"
+  },
+  "SEC-011": {
+    "id": "SEC-011",
+    "title": "Cookie-Security: __Host- Prefix, Secure, HttpOnly, SameSite",
+    "category": "SEC",
+    "severity": "high",
+    "applies_when": "auth_model == \"OAuth-Proxy\"",
+    "pdf_ref": "Sec 4.1",
+    "evidence_required": "4",
+    "_source": "SEC-011.md"
+  },
+  "SEC-012": {
+    "id": "SEC-012",
+    "title": "Clickjacking-Protection: X-Frame-Options / CSP frame-ancestors",
+    "category": "SEC",
+    "severity": "high",
+    "applies_when": "auth_model == \"OAuth-Proxy\"",
+    "pdf_ref": "Sec 4.1",
+    "evidence_required": "2",
+    "_source": "SEC-012.md"
+  },
+  "SEC-013": {
+    "id": "SEC-013",
+    "title": "API-Key-Storage: Secret Manager statt Plain-Text Env-Vars",
+    "category": "SEC",
+    "severity": "high",
+    "applies_when": "auth_model == \"API-Key\" or always",
+    "pdf_ref": "Sec 4 (Empirie 2025)",
+    "evidence_required": "3",
+    "_source": "SEC-013.md"
+  },
+  "SEC-014": {
+    "id": "SEC-014",
+    "title": "Tool-Allow-Listing via MCP-Gateway-Pattern",
+    "category": "SEC",
+    "severity": "medium",
+    "applies_when": "enterprise_context == true or stadt_zuerich_context == true or is_cloud_deployed == true",
+    "pdf_ref": "Sec 5.3",
+    "evidence_required": "2",
+    "_source": "SEC-014.md"
+  },
+  "SEC-015": {
+    "id": "SEC-015",
+    "title": "Pre-Flight Tool-Poisoning Detection",
+    "category": "SEC",
+    "severity": "medium",
+    "applies_when": "enterprise_context == true or stadt_zuerich_context == true or is_cloud_deployed == true",
+    "pdf_ref": "Sec 5.3",
+    "evidence_required": "2",
+    "_source": "SEC-015.md"
+  },
+  "SEC-016": {
+    "id": "SEC-016",
+    "title": "0.0.0.0-Binding-Prevention (NeighborJack)",
+    "category": "SEC",
+    "severity": "critical",
+    "applies_when": "transport != \"stdio-only\"",
+    "pdf_ref": "Sec 4 (Empirie 2025)",
+    "evidence_required": "2",
+    "_source": "SEC-016.md"
+  },
+  "SEC-017": {
+    "id": "SEC-017",
+    "title": "Path-Traversal-Prevention bei File-Tools",
+    "category": "SEC",
+    "severity": "high",
+    "applies_when": "tools_include_filesystem == true",
+    "pdf_ref": "Sec 4 (CVE-Historie)",
+    "evidence_required": "3",
+    "_source": "SEC-017.md"
+  },
+  "SEC-018": {
+    "id": "SEC-018",
+    "title": "Input-Validation an Tool-Boundaries (Pydantic strict / Zod)",
+    "category": "SEC",
+    "severity": "high",
+    "applies_when": "always",
+    "pdf_ref": "Sec 3 / Sec 4 (Defense-in-Depth)",
+    "evidence_required": "3",
+    "_source": "SEC-018.md"
+  },
+  "SEC-019": {
+    "id": "SEC-019",
+    "title": "Lethal Trifecta vermeiden: Server-Separation Read vs Write/Send",
+    "category": "SEC",
+    "severity": "critical",
+    "applies_when": "always",
+    "pdf_ref": "Anhang B1",
+    "evidence_required": "3",
+    "_source": "SEC-019.md"
+  },
+  "SEC-020": {
+    "id": "SEC-020",
+    "title": "Command Injection Prevention: keine os.system, shell=True, eval",
+    "category": "SEC",
+    "severity": "critical",
+    "applies_when": "always",
+    "pdf_ref": "Anhang B6",
+    "evidence_required": "3",
+    "_source": "SEC-020.md"
+  },
+  "SEC-021": {
+    "id": "SEC-021",
+    "title": "Egress-Allow-List: Code-Layer und Network-Layer",
+    "category": "SEC",
+    "severity": "high",
+    "applies_when": "tools_make_external_requests == true or is_cloud_deployed == true",
+    "pdf_ref": "Anhang B5 + B12",
+    "evidence_required": "4",
+    "_source": "SEC-021.md"
+  },
+  "SEC-022": {
+    "id": "SEC-022",
+    "title": "Tool-Hash-Pinning + Namespace-Präfix gegen Rug Pull",
+    "category": "SEC",
+    "severity": "high",
+    "applies_when": "enterprise_context == true or stadt_zuerich_context == true or is_cloud_deployed == true",
+    "pdf_ref": "Anhang B4",
+    "evidence_required": "3",
+    "_source": "SEC-022.md"
+  },
+  "SEC-023": {
+    "id": "SEC-023",
+    "title": "DLP-Scanning auf Tool-Outputs (Presidio / Cloud DLP / Regex)",
+    "category": "SEC",
+    "severity": "high",
+    "applies_when": "data_class != \"Public Open Data\"",
+    "pdf_ref": "Anhang B8",
+    "evidence_required": "3",
+    "_source": "SEC-023.md"
+  }
+}

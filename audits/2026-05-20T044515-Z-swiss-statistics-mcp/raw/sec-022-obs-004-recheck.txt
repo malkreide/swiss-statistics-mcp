@@ -1,0 +1,9 @@
+=== SEC-022/OBS-004: error sanitization ===
+--- catch-all blocks ---
+11
+--- _LOGGER.exception calls ---
+8
+--- _LOGGER.warning calls ---
+2
+--- leaky patterns remaining ---
+(none)
