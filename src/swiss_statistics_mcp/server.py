@@ -254,6 +254,9 @@ async def _ensure_catalog(lang: str = DEFAULT_LANGUAGE) -> dict[str, str]:
                     meta = resp.json()
                     catalog[dbid] = meta.get("title", dbid)
             except Exception:
+                _LOGGER.warning(
+                    "catalog metadata fetch failed for %s", dbid, exc_info=True
+                )
                 catalog[dbid] = dbid  # fallback to ID if metadata unavailable
 
     _catalog_cache[cache_key] = catalog
@@ -614,8 +617,12 @@ async def bfs_list_themes(params: ListThemesInput) -> str:
             f"API-Fehler {e.response.status_code}",
             "BFS STAT-TAB API nicht erreichbar. Bitte später nochmals versuchen.",
         )
-    except Exception as e:
-        return _format_error(f"Unerwarteter Fehler: {type(e).__name__}: {e}")
+    except Exception:
+        _LOGGER.exception("bfs_list_themes failed")
+        return _format_error(
+            "Interner Fehler beim Laden der Themen.",
+            "Bitte erneut versuchen.",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -689,6 +696,9 @@ async def bfs_list_tables_by_theme(params: ListTablesByThemeInput) -> str:
                     else:
                         tables.append({"table_id": dbid, "title": dbid})
                 except Exception:
+                    _LOGGER.warning(
+                        "table metadata fetch failed for %s", dbid, exc_info=True
+                    )
                     tables.append({"table_id": dbid, "title": dbid})
 
         return json.dumps(
@@ -708,8 +718,12 @@ async def bfs_list_tables_by_theme(params: ListTablesByThemeInput) -> str:
         )
     except httpx.HTTPStatusError as e:
         return _format_error(f"API-Fehler {e.response.status_code}")
-    except Exception as e:
-        return _format_error(f"Fehler: {type(e).__name__}: {e}")
+    except Exception:
+        _LOGGER.exception("bfs_list_tables_by_theme failed")
+        return _format_error(
+            "Interner Fehler beim Laden der Tabellen-Liste.",
+            "Bitte erneut versuchen.",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -790,8 +804,12 @@ async def bfs_search_tables(params: SearchTablesInput) -> str:
         )
     except httpx.HTTPStatusError as e:
         return _format_error(f"API-Fehler {e.response.status_code}")
-    except Exception as e:
-        return _format_error(f"Fehler beim Aufbau des Katalogs: {type(e).__name__}: {e}")
+    except Exception:
+        _LOGGER.exception("bfs_search_tables failed")
+        return _format_error(
+            "Interner Fehler beim Aufbau des Katalogs.",
+            "Bitte erneut versuchen.",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -890,8 +908,12 @@ async def bfs_get_table_metadata(params: GetTableMetadataInput) -> str:
                 "Verwende bfs_search_tables oder bfs_list_tables_by_theme um gültige IDs zu finden.",
             )
         return _format_error(f"API-Fehler {e.response.status_code}")
-    except Exception as e:
-        return _format_error(f"Fehler: {type(e).__name__}: {e}")
+    except Exception:
+        _LOGGER.exception("bfs_get_table_metadata failed")
+        return _format_error(
+            "Interner Fehler beim Laden der Metadaten.",
+            "Bitte erneut versuchen.",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -976,8 +998,12 @@ async def bfs_get_data(params: GetDataInput) -> str:
                 ),
             )
         return _format_error(f"API-Fehler {e.response.status_code}: {e.response.text[:200]}")
-    except Exception as e:
-        return _format_error(f"Fehler: {type(e).__name__}: {e}")
+    except Exception:
+        _LOGGER.exception("bfs_get_data failed")
+        return _format_error(
+            "Interner Fehler beim Daten-Abruf.",
+            "Bitte mit kleinerer Datenmenge oder anderen Filtern erneut versuchen.",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1150,8 +1176,12 @@ async def bfs_education_stats(params: GetEducationStatsInput) -> str:
             f"API-Fehler {e.response.status_code}",
             "Tabelle möglicherweise aktuell nicht verfügbar. Bitte später nochmals versuchen.",
         )
-    except Exception as e:
-        return _format_error(f"Fehler: {type(e).__name__}: {e}")
+    except Exception:
+        _LOGGER.exception("bfs_education_stats failed")
+        return _format_error(
+            "Interner Fehler beim Abruf der Bildungsstatistiken.",
+            "Bitte erneut versuchen.",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1271,8 +1301,12 @@ async def bfs_population(params: GetPopulationInput) -> str:
 
     except httpx.HTTPStatusError as e:
         return _format_error(f"API-Fehler {e.response.status_code}")
-    except Exception as e:
-        return _format_error(f"Fehler: {type(e).__name__}: {e}")
+    except Exception:
+        _LOGGER.exception("bfs_population failed")
+        return _format_error(
+            "Interner Fehler beim Abruf der Bevölkerungsdaten.",
+            "Bitte erneut versuchen.",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1368,8 +1402,12 @@ async def bfs_compare_cantons(params: CompareCantonsInput) -> str:
                 "Verwende bfs_get_table_metadata um gültige Werte-Codes zu erhalten.",
             )
         return _format_error(f"API-Fehler {e.response.status_code}")
-    except Exception as e:
-        return _format_error(f"Fehler: {type(e).__name__}: {e}")
+    except Exception:
+        _LOGGER.exception("bfs_compare_cantons failed")
+        return _format_error(
+            "Interner Fehler beim Kantons-Vergleich.",
+            "Bitte erneut versuchen.",
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -19,6 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   interfaces. Set `MCP_HOST=0.0.0.0` or pass `--host 0.0.0.0` to expose on a
   container port; README documents the access-control requirements for cloud
   deployments. Addresses audit finding SDK-004.
+- Tool error responses no longer interpolate raw exception messages. Generic
+  catch-all blocks now log the full traceback server-side via
+  `_LOGGER.exception()` and return a sanitized German error message with a
+  remediation hint to the client. Previously the client received
+  `f"Fehler: {type(e).__name__}: {e}"`, which could leak internal file paths,
+  library versions, upstream payload excerpts, and request fragments.
+  Addresses audit finding SEC-022.
+
+### Changed
+- The two silent fallback loops in catalog and table-list construction
+  (server.py:256, 691) now emit `_LOGGER.warning(..., exc_info=True)` so
+  BFS metadata-schema changes surface in logs instead of being masked.
+  Addresses audit finding OBS-004.
 
 ### Fixed
 - HTTP entrypoint passed `port=` to `mcp.run()`, which raises `TypeError` in
