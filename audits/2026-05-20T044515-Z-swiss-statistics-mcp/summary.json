@@ -1,0 +1,97 @@
+{
+  "audit_meta": {
+    "server_name": "swiss-statistics-mcp",
+    "skill_version": "1.0.0",
+    "run_id": "2026-05-20T044515-Z-swiss-statistics-mcp",
+    "policy": "fail-or-partial",
+    "previous_run_id": "2026-05-20T033454-Z-swiss-statistics-mcp",
+    "previous_findings_count": 16
+  },
+  "totals": {
+    "checks_evaluated": 68,
+    "applicable": 44,
+    "by_status": {
+      "pass": 44,
+      "fail": 0,
+      "partial": 0,
+      "todo": 0,
+      "n/a": 24
+    },
+    "by_severity_among_findings": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0
+    },
+    "by_category": {
+      "ARCH": {
+        "pass": 11,
+        "fail": 0,
+        "partial": 0,
+        "todo": 0,
+        "n/a": 1
+      },
+      "CH": {
+        "pass": 1,
+        "fail": 0,
+        "partial": 0,
+        "todo": 0,
+        "n/a": 7
+      },
+      "HITL": {
+        "pass": 0,
+        "fail": 0,
+        "partial": 0,
+        "todo": 0,
+        "n/a": 5
+      },
+      "OBS": {
+        "pass": 5,
+        "fail": 0,
+        "partial": 0,
+        "todo": 0,
+        "n/a": 1
+      },
+      "OPS": {
+        "pass": 3,
+        "fail": 0,
+        "partial": 0,
+        "todo": 0,
+        "n/a": 0
+      },
+      "SCALE": {
+        "pass": 5,
+        "fail": 0,
+        "partial": 0,
+        "todo": 0,
+        "n/a": 1
+      },
+      "SDK": {
+        "pass": 4,
+        "fail": 0,
+        "partial": 0,
+        "todo": 0,
+        "n/a": 1
+      },
+      "SEC": {
+        "pass": 15,
+        "fail": 0,
+        "partial": 0,
+        "todo": 0,
+        "n/a": 8
+      }
+    }
+  },
+  "findings": {
+    "policy": "fail-or-partial",
+    "policy_statuses": [
+      "fail",
+      "partial"
+    ],
+    "expected_count": 0,
+    "expected_ids": [],
+    "details": []
+  },
+  "production_ready": true,
+  "blocking_findings": []
+}

@@ -1,0 +1,30 @@
+=== ARCH-005: structured outputs ===
+=== ARCH-009: truncation fields ===
+578:# compare_cantons) carry `truncated: bool`, `rows_total: int`, and
+579:# `rows_returned: int` so clients no longer need to parse a German
+685:    rows_total: int | None = None
+686:    rows_returned: int | None = None
+687:    truncated: bool = False
+758:    rows_total = len(values)
+759:    rows_returned = len(rows)
+772:        "rows_total": rows_total,
+811:async def bfs_list_themes(params: ListThemesInput) -> ListThemesResult:
+882:async def bfs_list_tables_by_theme(params: ListTablesByThemeInput) -> ListTablesByThemeResult:
+978:async def bfs_search_tables(params: SearchTablesInput) -> SearchTablesResult:
+1061:async def bfs_get_table_metadata(params: GetTableMetadataInput) -> TableMetadataResult:
+1167:async def bfs_get_data(params: GetDataInput) -> DataTableResult:
+1349:async def bfs_education_stats(params: GetEducationStatsInput) -> DataTableResult:
+1441:async def bfs_population(params: GetPopulationInput) -> DataTableResult:
+1570:async def bfs_compare_cantons(params: CompareCantonsInput) -> DataTableResult:
+1674:async def bfs_featured_datasets(params: ListThemesInput) -> FeaturedDatasetsResult:
+=== ARCH-009 truncation fields ===
+578:# compare_cantons) carry `truncated: bool`, `rows_total: int`, and
+579:# `rows_returned: int` so clients no longer need to parse a German
+622:    more_values: int = 0  # how many values were truncated from `values` (display cap)
+685:    rows_total: int | None = None
+686:    rows_returned: int | None = None
+687:    truncated: bool = False
+758:    rows_total = len(values)
+759:    rows_returned = len(rows)
+772:        "rows_total": rows_total,
+773:        "rows_returned": rows_returned,

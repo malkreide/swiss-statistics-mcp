@@ -1,0 +1,8 @@
+=== SDK-004: streamable-http binding default ===
+1742:        # 0.0.0.0 turns it into an open proxy to the BFS API. Set MCP_HOST or
+1746:        host     = sys.argv[host_idx] if host_idx else os.environ.get("MCP_HOST", "127.0.0.1")
+1748:        mcp.settings.host = host
+=== Test pin ===
+835:    def test_default_host_is_loopback(self):
+836-        from swiss_statistics_mcp.server import mcp
+837-        assert mcp.settings.host == "127.0.0.1"

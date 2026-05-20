@@ -1,0 +1,15 @@
+=== SEC-008: table_id regex ===
+56:BFS_TABLE_ID_PATTERN = r"^px-[a-z]-\d{8,12}_\d{1,4}$"
+432:        pattern=BFS_TABLE_ID_PATTERN,
+459:        pattern=BFS_TABLE_ID_PATTERN,
+540:        pattern=BFS_TABLE_ID_PATTERN,
+=== OPS-001: CI security scanners ===
+47:          # Upgrade pip first so its own version is not flagged by pip-audit;
+52:      - name: Static security scan (bandit)
+53:        run: bandit -r src/ -ll
+55:      - name: Dependency CVE scan (pip-audit)
+56:        # `--strict` is intentionally NOT set: pip-audit's strict mode treats
+61:        run: pip-audit
+=== OPS-003: README maturity ===
+README.md:24:## Maturity
+README.de.md:24:## Reifegrad

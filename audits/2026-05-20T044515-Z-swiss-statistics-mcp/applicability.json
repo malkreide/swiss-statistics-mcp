@@ -1,0 +1,342 @@
+{
+  "ARCH-001": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "ARCH-002": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "ARCH-003": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "ARCH-004": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "ARCH-005": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "ARCH-006": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "ARCH-007": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "ARCH-008": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "ARCH-009": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "ARCH-010": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "write_capable == true"
+  },
+  "ARCH-011": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "ARCH-012": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "CH-001": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "data_class != \"Public Open Data\""
+  },
+  "CH-002": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "data_class == \"PII\""
+  },
+  "CH-003": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "volksschule_context == true and data_class == \"PII\""
+  },
+  "CH-004": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "data_source.is_swiss_open_data == true"
+  },
+  "CH-005": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "stadt_zuerich_context == true"
+  },
+  "CH-006": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "schulamt_context == true"
+  },
+  "CH-007": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "data_class != \"Public Open Data\""
+  },
+  "CH-008": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "data_class != \"Public Open Data\""
+  },
+  "HITL-001": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "uses_sampling == true"
+  },
+  "HITL-002": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "uses_sampling == true"
+  },
+  "HITL-003": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "data_class != \"Public Open Data\" and uses_sampling == true"
+  },
+  "HITL-004": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "uses_sequential_thinking == true"
+  },
+  "HITL-005": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "write_capable == true"
+  },
+  "OBS-001": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "OBS-002": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "OBS-003": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "OBS-004": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "transport == \"stdio-only\" or transport == \"dual\""
+  },
+  "OBS-005": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "is_cloud_deployed == true and data_class != \"Public Open Data\""
+  },
+  "OBS-006": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "is_cloud_deployed == true"
+  },
+  "OPS-001": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "OPS-002": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "OPS-003": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "SCALE-001": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "deployment.includes(\"Railway\") or deployment.includes(\"Render\") or deployment.includes(\"andere\")"
+  },
+  "SCALE-002": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "transport == \"HTTP/SSE\" or transport == \"dual\""
+  },
+  "SCALE-003": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "(transport == \"HTTP/SSE\" or transport == \"dual\") and is_cloud_deployed == true"
+  },
+  "SCALE-004": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "is_cloud_deployed == true"
+  },
+  "SCALE-005": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "enterprise_context == true or stadt_zuerich_context == true"
+  },
+  "SCALE-006": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "is_cloud_deployed == true"
+  },
+  "SDK-001": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "sdk_language == \"Python\""
+  },
+  "SDK-002": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "sdk_language == \"Python\""
+  },
+  "SDK-003": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "sdk_language == \"Python\""
+  },
+  "SDK-004": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "sdk_language == \"Python\" and (transport == \"HTTP/SSE\" or transport == \"dual\")"
+  },
+  "SDK-005": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "sdk_language == \"TypeScript\""
+  },
+  "SEC-001": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "auth_model == \"OAuth-Proxy\""
+  },
+  "SEC-002": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "auth_model == \"OAuth-Proxy\" or auth_model == \"API-Key\""
+  },
+  "SEC-003": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "auth_model != \"none\""
+  },
+  "SEC-004": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "transport != \"stdio-only\" or tools_make_external_requests == true"
+  },
+  "SEC-005": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "transport != \"stdio-only\" and tools_make_external_requests == true"
+  },
+  "SEC-006": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "deployment.includes(\"local-stdio\")"
+  },
+  "SEC-007": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "deployment.includes(\"local-stdio\") or deployment.includes(\"Railway\") or deployment.includes(\"Render\")"
+  },
+  "SEC-008": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "deployment.includes(\"local-stdio\")"
+  },
+  "SEC-009": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "transport != \"stdio-only\""
+  },
+  "SEC-010": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "auth_model == \"OAuth-Proxy\""
+  },
+  "SEC-011": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "auth_model == \"OAuth-Proxy\""
+  },
+  "SEC-012": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "auth_model == \"OAuth-Proxy\""
+  },
+  "SEC-013": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "auth_model == \"API-Key\" or always"
+  },
+  "SEC-014": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "enterprise_context == true or stadt_zuerich_context == true or is_cloud_deployed == true"
+  },
+  "SEC-015": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "enterprise_context == true or stadt_zuerich_context == true or is_cloud_deployed == true"
+  },
+  "SEC-016": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "transport != \"stdio-only\""
+  },
+  "SEC-017": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "tools_include_filesystem == true"
+  },
+  "SEC-018": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "SEC-019": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "SEC-020": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "always"
+  },
+  "SEC-021": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "tools_make_external_requests == true or is_cloud_deployed == true"
+  },
+  "SEC-022": {
+    "applicable": true,
+    "reason": "match",
+    "expression": "enterprise_context == true or stadt_zuerich_context == true or is_cloud_deployed == true"
+  },
+  "SEC-023": {
+    "applicable": false,
+    "reason": "no-match",
+    "expression": "data_class != \"Public Open Data\""
+  }
+}
