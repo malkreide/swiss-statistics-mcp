@@ -540,6 +540,19 @@ class TestInputValidation:
 
 
 # ---------------------------------------------------------------------------
+# Transport / host-binding tests (SDK-004)
+# ---------------------------------------------------------------------------
+
+class TestTransportBinding:
+    """The streamable-http transport must bind to loopback by default and
+    only expose externally when the operator opts in explicitly."""
+
+    def test_default_host_is_loopback(self):
+        from swiss_statistics_mcp.server import mcp
+        assert mcp.settings.host == "127.0.0.1"
+
+
+# ---------------------------------------------------------------------------
 # Live smoke tests (require network – run separately)
 # ---------------------------------------------------------------------------
 
