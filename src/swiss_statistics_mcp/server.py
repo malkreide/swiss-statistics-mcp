@@ -1345,11 +1345,22 @@ def _schulamt_relevance(table_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    import os
     import sys
 
     if "--http" in sys.argv:
         port_idx = sys.argv.index("--port") + 1 if "--port" in sys.argv else None
         port     = int(sys.argv[port_idx]) if port_idx else 8000
-        mcp.run(transport="streamable-http", port=port)
+
+        # Default to loopback. The server has no authentication; exposing it on
+        # 0.0.0.0 turns it into an open proxy to the BFS API. Set MCP_HOST or
+        # pass --host explicitly to bind elsewhere (e.g. behind a reverse proxy
+        # with access control).
+        host_idx = sys.argv.index("--host") + 1 if "--host" in sys.argv else None
+        host     = sys.argv[host_idx] if host_idx else os.environ.get("MCP_HOST", "127.0.0.1")
+
+        mcp.settings.host = host
+        mcp.settings.port = port
+        mcp.run(transport="streamable-http")
     else:
         mcp.run()

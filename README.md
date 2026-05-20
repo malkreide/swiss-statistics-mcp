@@ -84,8 +84,13 @@ uvx swiss-statistics-mcp
 # stdio (for Claude Desktop)
 python -m swiss_statistics_mcp.server
 
-# Streamable HTTP (port 8000)
+# Streamable HTTP, loopback only (default: host=127.0.0.1, port=8000)
 python -m swiss_statistics_mcp.server --http --port 8000
+
+# Streamable HTTP, all interfaces (only behind a reverse proxy with access control)
+MCP_HOST=0.0.0.0 python -m swiss_statistics_mcp.server --http --port 8000
+# or
+python -m swiss_statistics_mcp.server --http --host 0.0.0.0 --port 8000
 ```
 
 Try it immediately in Claude Desktop:
@@ -140,13 +145,29 @@ The configuration syntax is identical to Claude Desktop. The file name depends o
 
 ### Cloud Deployment (SSE for browser access)
 
-For use via **claude.ai in the browser** (e.g. on managed workstations without local software):
+For use via **claude.ai in the browser** (e.g. on managed workstations without local software).
 
-**Render.com (recommended):**
+> ⚠️ **Security note — this server has no authentication.** A public URL
+> turns it into an open proxy to the BFS API on your deployment's IP. Any
+> client with the URL can drive the tools, consume your platform quota, and
+> attribute traffic to your IP. Two mitigations, in order of preference:
+>
+> 1. **Put it behind access control** — Render's «Private Service», Cloudflare
+>    Access, or a reverse proxy with Basic-Auth / IP allowlist in front of the
+>    container.
+> 2. **Accept it as a public open-data proxy** — only acceptable because all
+>    data is BFS OGD (Public Open Data) and tools are read-only.
+>
+> The server binds to `127.0.0.1` by default. To expose it on a container
+> port you must explicitly set `MCP_HOST=0.0.0.0` (e.g. as a Render env var)
+> or pass `--host 0.0.0.0`. Do not do this without one of the mitigations above.
+
+**Render.com:**
 1. Push/fork the repository to GitHub
 2. On [render.com](https://render.com): New Web Service → connect GitHub repo
-3. Set start command: `python -m swiss_statistics_mcp.server --http --port 8000`
-4. In claude.ai under Settings → MCP Servers, add: `https://your-app.onrender.com/sse`
+3. Set environment variable: `MCP_HOST=0.0.0.0`
+4. Set start command: `python -m swiss_statistics_mcp.server --http --port 8000`
+5. In claude.ai under Settings → MCP Servers, add: `https://your-app.onrender.com/sse`
 
 > 💡 *"stdio for the developer laptop, SSE for the browser."*
 
