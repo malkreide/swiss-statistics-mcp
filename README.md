@@ -262,6 +262,31 @@ swiss-statistics-mcp/
 
 ---
 
+## Observability
+
+The server emits one **JSON log line per tool call** on stderr:
+
+```jsonc
+{"ts": "2026-05-20T04:02:28", "level": "INFO", "logger": "swiss_statistics_mcp",
+ "event": "tool_start", "tool": "bfs_list_themes", "rid": "1091cb73", "params_keys": ["lang"]}
+{"ts": "2026-05-20T04:02:28", "level": "INFO", "logger": "swiss_statistics_mcp",
+ "event": "tool_end", "tool": "bfs_list_themes", "rid": "1091cb73", "status": "ok", "duration_ms": 303}
+```
+
+- `rid` — 8-char correlation id linking `tool_start` and `tool_end` for the same call
+- `params_keys` — sorted list of input field names (no values, no PII)
+- `duration_ms` — per-call latency on the `tool_end` event
+- `status` — `"ok"` or `"error"`; `error_type` is added when a tool raises
+
+Render and other cloud platforms can index these directly for per-tool latency
+dashboards and error-rate alerts. Set `MCP_LOG_LEVEL=DEBUG` for verbose output
+or `WARNING` to suppress per-call events.
+
+> ℹ️ Logs go to **stderr** so they never collide with the MCP protocol on
+> stdio transport (which uses stdout).
+
+---
+
 ## Known Limitations
 
 - **PxWeb API:** Rate limiting may apply for rapid successive queries; the server uses a 1-hour cache for the catalogue index

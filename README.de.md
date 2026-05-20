@@ -264,6 +264,31 @@ swiss-statistics-mcp/
 
 ---
 
+## Observability
+
+Der Server schreibt pro Tool-Call **eine JSON-Log-Zeile** auf stderr:
+
+```jsonc
+{"ts": "2026-05-20T04:02:28", "level": "INFO", "logger": "swiss_statistics_mcp",
+ "event": "tool_start", "tool": "bfs_list_themes", "rid": "1091cb73", "params_keys": ["lang"]}
+{"ts": "2026-05-20T04:02:28", "level": "INFO", "logger": "swiss_statistics_mcp",
+ "event": "tool_end", "tool": "bfs_list_themes", "rid": "1091cb73", "status": "ok", "duration_ms": 303}
+```
+
+- `rid` — 8-Zeichen-Correlation-ID, verbindet `tool_start` und `tool_end` desselben Calls
+- `params_keys` — sortierte Liste der Input-Feld-Namen (keine Werte, kein PII)
+- `duration_ms` — Latenz pro Call im `tool_end`-Event
+- `status` — `"ok"` oder `"error"`; bei Fehler zusätzlich `error_type`
+
+Render und andere Cloud-Plattformen können diese Logs direkt für per-Tool-Latency-
+Dashboards und Error-Rate-Alerts indexieren. `MCP_LOG_LEVEL=DEBUG` für verbose,
+`WARNING` um Per-Call-Events zu unterdrücken.
+
+> ℹ️ Logs gehen auf **stderr**, kollidieren also nie mit dem MCP-Protokoll auf
+> stdio-Transport (das stdout nutzt).
+
+---
+
 ## Bekannte Einschränkungen
 
 - **PxWeb API:** Rate-Limiting bei schnellen aufeinanderfolgenden Abfragen; der Server nutzt einen 1-Stunden-Cache für den Katalogindex
