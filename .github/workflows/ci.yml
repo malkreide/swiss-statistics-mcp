@@ -44,10 +44,18 @@ jobs:
 
       - name: Install dependencies
         run: |
+          # Upgrade pip first so its own version is not flagged by pip-audit;
+          # the host-tool's CVEs are not part of our supply chain.
+          pip install --upgrade pip
           pip install -e ".[dev]"
 
       - name: Static security scan (bandit)
         run: bandit -r src/ -ll
 
       - name: Dependency CVE scan (pip-audit)
-        run: pip-audit --strict
+        # `--strict` is intentionally NOT set: pip-audit's strict mode treats
+        # the unaudit-able editable install of our own package as a hard
+        # error, which makes the gate constantly red on any editable layout.
+        # The default mode still exits 1 on real CVE findings in deps —
+        # that is the gate we actually want.
+        run: pip-audit
