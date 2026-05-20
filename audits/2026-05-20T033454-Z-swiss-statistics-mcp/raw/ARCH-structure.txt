@@ -1,0 +1,18 @@
+=== Repo structure ===
+./README.md
+./EXAMPLES.md
+./README.de.md
+./pyproject.toml
+./CHANGELOG.md
+./CONTRIBUTING.md
+./tests/test_server.py
+./src/swiss_statistics_mcp/__init__.py
+./src/swiss_statistics_mcp/server.py
+./.github/workflows/ci.yml
+./.github/workflows/publish.yml
+=== LICENSE ===
+MIT License
+
+Copyright (c) 2026 malkreide
+
+Permission is hereby granted, free of charge, to any person obtaining a copy

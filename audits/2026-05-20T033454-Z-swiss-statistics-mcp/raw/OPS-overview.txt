@@ -1,0 +1,90 @@
+=== Test files ===
+test_server.py
+585 tests/test_server.py
+=== CI workflows ===
+ci.yml
+publish.yml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]"
+
+      - name: Run tests
+        run: |
+          PYTHONPATH=src pytest tests/ -m "not live"
+
+      - name: Lint
+        run: ruff check src/ tests/
+=== Docs files ===
+assets
+=== README sections ===
+# 📊 swiss-statistics-mcp
+## Overview
+## Features
+## Prerequisites
+## Installation
+# Clone the repository
+# Install
+# or with uv:
+## Quickstart
+# stdio (for Claude Desktop)
+# Streamable HTTP (port 8000)
+## Configuration
+## Available Tools
+## Themes
+## Architecture
+## Project Structure
+## Known Limitations
+## Testing
+# Unit tests (no API key required)
+# Integration tests (live API calls)
+## Safety & Limits
+## Changelog
+## Contributing
+## License
+## Author
+## Credits & Related Projects
+=== CHANGELOG ===
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.0] - 2026-03-29
+
+### Added
+- Initial release with 9 MCP tools for BFS STAT-TAB PxWeb API access
+- Full catalog of 682 datasets across 21 themes
+- Convenience tools: `bfs_education_stats`, `bfs_population`, `bfs_compare_cantons`
+- Catalog search with TTL-based caching (1h)
+- JSON-STAT2 response parsing with human-readable table output
+- Dual transport: stdio (Claude Desktop) and Streamable HTTP (cloud)
+- 39 unit/integration tests + 4 live smoke tests
+- Bilingual documentation (English/German)
+- GitHub Actions CI (Python 3.11, 3.12, 3.13)

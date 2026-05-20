@@ -1,0 +1,17 @@
+=== Transport ===
+19:import httpx
+27:BFS_API_BASE = "https://www.pxweb.bfs.admin.ch/api/v1"
+86:    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+94:    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+151:    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+515:    except httpx.HTTPStatusError as e:
+574:        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+611:    except httpx.HTTPStatusError as e:
+692:    except httpx.HTTPStatusError as e:
+786:    except httpx.HTTPStatusError as e:
+863:    except httpx.HTTPStatusError as e:
+1046:    except httpx.HTTPStatusError as e:
+1169:    except httpx.HTTPStatusError as e:
+1260:    except httpx.HTTPStatusError as e:
+1350:    if "--http" in sys.argv:
+1353:        mcp.run(transport="streamable-http", port=port)

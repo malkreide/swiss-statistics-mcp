@@ -1,0 +1,29 @@
+123:    return json.dumps(result, ensure_ascii=False, indent=2)
+420:    return {
+503:        return json.dumps(
+596:        return json.dumps(
+679:        return json.dumps(
+765:        return json.dumps(
+861:        return json.dumps(result, ensure_ascii=False, indent=2)
+1044:        return json.dumps(result, ensure_ascii=False, indent=2)
+1167:        return json.dumps(result, ensure_ascii=False, indent=2)
+1258:        return json.dumps(result, ensure_ascii=False, indent=2)
+1309:    return json.dumps(
+84:async def _get(url: str) -> Any:
+92:async def _post(url: str, body: dict[str, Any]) -> Any:
+100:def _theme_code_from_dbid(dbid: str) -> str:
+111:def _format_table_url(dbid: str, lang: str = DEFAULT_LANGUAGE) -> str:
+115:def _build_data_url(dbid: str, lang: str = DEFAULT_LANGUAGE) -> str:
+119:def _format_error(msg: str, hint: str = "") -> str:
+130:async def _ensure_catalog(lang: str = DEFAULT_LANGUAGE) -> dict[str, str]:
+377:def _format_jsonstat2_as_table(data: dict[str, Any], max_rows: int = 500) -> dict[str, Any]:
+469:async def bfs_list_themes(params: ListThemesInput) -> str:
+538:async def bfs_list_tables_by_theme(params: ListTablesByThemeInput) -> str:
+631:async def bfs_search_tables(params: SearchTablesInput) -> str:
+712:async def bfs_get_table_metadata(params: GetTableMetadataInput) -> str:
+811:async def bfs_get_data(params: GetDataInput) -> str:
+985:async def bfs_education_stats(params: GetEducationStatsInput) -> str:
+1069:async def bfs_population(params: GetPopulationInput) -> str:
+1189:async def bfs_compare_cantons(params: CompareCantonsInput) -> str:
+1285:async def bfs_featured_datasets(params: ListThemesInput) -> str:
+1325:def _schulamt_relevance(table_id: str) -> str:

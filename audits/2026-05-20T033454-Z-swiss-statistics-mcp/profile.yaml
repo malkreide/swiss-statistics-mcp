@@ -1,0 +1,24 @@
+server_name: swiss-statistics-mcp
+repo_url: https://github.com/malkreide/swiss-statistics-mcp
+transport: dual
+auth_model: none
+data_class: Public Open Data
+write_capable: false
+deployment:
+  - local-stdio
+  - Render
+is_cloud_deployed: true
+sdk_language: Python
+uses_sampling: false
+uses_sequential_thinking: false
+tools_include_filesystem: false
+tools_make_external_requests: true
+stadt_zuerich_context: false
+schulamt_context: false
+volksschule_context: false
+enterprise_context: false
+data_source:
+  is_swiss_open_data: true
+  provider: BFS
+  licence: OGD
+production_ready: false

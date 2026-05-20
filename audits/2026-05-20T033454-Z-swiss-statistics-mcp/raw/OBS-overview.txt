@@ -1,0 +1,35 @@
+=== logging imports/usage ===
+=== print statements (anti) ===
+=== structured logging ===
+173:    model_config = ConfigDict(extra="forbid")
+182:    model_config = ConfigDict(extra="forbid")
+205:    model_config = ConfigDict(extra="forbid")
+234:    model_config = ConfigDict(extra="forbid")
+251:    model_config = ConfigDict(extra="forbid")
+264:    model_config = ConfigDict(extra="forbid")
+292:    model_config = ConfigDict(extra="forbid")
+320:    model_config = ConfigDict(extra="forbid")
+345:    model_config = ConfigDict(extra="forbid")
+=== error handling ===
+20
+=== try/except blocks ===
+154:            try:
+160:            except Exception:
+482:    try:
+515:    except httpx.HTTPStatusError as e:
+520:    except Exception as e:
+553:    try:
+577:                try:
+593:                except Exception:
+611:    except httpx.HTTPStatusError as e:
+613:    except Exception as e:
+650:    try:
+692:    except httpx.HTTPStatusError as e:
+694:    except Exception as e:
+740:    try:
+786:    except httpx.HTTPStatusError as e:
+793:    except Exception as e:
+835:    try:
+863:    except httpx.HTTPStatusError as e:
+878:    except Exception as e:
+1022:    try:

@@ -1,0 +1,26 @@
+176:        description="Language code: 'de' (German), 'fr' (French), 'it' (Italian), 'en' (English)",
+193:        description="Language code: 'de', 'fr', 'it', 'en'",
+198:        description="Maximum number of tables to return",
+217:        description="Optional: filter to a specific theme code, e.g. '15' for Bildung",
+222:        description="Language code: 'de', 'fr', 'it', 'en'",
+227:        description="Maximum number of results to return",
+245:        description="Language code: 'de', 'fr', 'it', 'en'",
+252:    code: str = Field(..., description="Variable code from table metadata, e.g. 'Kanton'")
+267:        description="BFS table ID, e.g. 'px-x-1504000000_173'",
+280:        description="Language code: 'de', 'fr', 'it', 'en'",
+285:        description="Maximum number of data rows to return (safety limit)",
+314:        description="Language code: 'de', 'fr', 'it', 'en'",
+331:        description="Year to filter, e.g. '2024'. Leave empty for all available years.",
+348:        description="BFS table ID to compare across cantons",
+364:        description="Optional additional dimension filters beyond canton selection",
+368:        description="Language code: 'de', 'fr', 'it', 'en'",
+Total @mcp.tool functions: 9
+  bfs_list_themes: docstring_len=393 preview='List all 21 BFS statistical themes with their codes and dataset counts.\n\nReturns'
+  bfs_list_tables_by_theme: docstring_len=483 preview='List available statistical tables for a specific BFS theme.\n\nReturns table IDs a'
+  bfs_search_tables: docstring_len=699 preview='Search for BFS statistical tables by keyword in their titles.\n\nPerforms a full-t'
+  bfs_get_table_metadata: docstring_len=836 preview='Get metadata for a BFS table: title, variables, and available filter values.\n\nEs'
+  bfs_get_data: docstring_len=930 preview='Query statistical data from a BFS table with optional filters.\n\nFetches actual d'
+  bfs_education_stats: docstring_len=659 preview='Retrieve Swiss education statistics — convenience tool for Schulamt context.\n\nPr'
+  bfs_population: docstring_len=575 preview='Retrieve Swiss population statistics by region, year, and breakdown.\n\nAccesses t'
+  bfs_compare_cantons: docstring_len=820 preview='Compare a BFS statistical indicator across multiple Swiss cantons.\n\nDesigned for'
+  bfs_featured_datasets: docstring_len=401 preview='Return a curated list of high-value BFS datasets for Schulamt and public adminis'
