@@ -561,6 +561,33 @@ class TestInputValidation:
         with pytest.raises(Exception):
             CompareCantonsInput(table_id="px-x-1504000000_173", canton_values=["1"])
 
+    def test_valid_table_id_accepted(self):
+        from swiss_statistics_mcp.server import (
+            CompareCantonsInput,
+            GetDataInput,
+            GetTableMetadataInput,
+        )
+        for cls in (GetTableMetadataInput, GetDataInput):
+            cls(table_id="px-x-1504000000_173", lang="de")
+        CompareCantonsInput(
+            table_id="px-x-1504000000_173", canton_values=["1", "2"]
+        )
+
+    @pytest.mark.parametrize("bad_id", [
+        "../etc/passwd",
+        "px-x-../foo",
+        "px-X-1504000000_173",          # uppercase letter rejected
+        "px-x-1504000000_173;rm -rf",   # shell metacharacters
+        "px-x-1504000000_173%2F..",     # URL-encoded traversal
+        "ftp://example.com/file",
+        "px-x-abc_123",                 # non-numeric digits-section
+        "",
+    ])
+    def test_malformed_table_id_rejected(self, bad_id):
+        from swiss_statistics_mcp.server import GetTableMetadataInput
+        with pytest.raises(Exception):
+            GetTableMetadataInput(table_id=bad_id, lang="de")
+
 
 # ---------------------------------------------------------------------------
 # Resilience tests (SEC-018, SCALE-002, SCALE-003, SCALE-004)

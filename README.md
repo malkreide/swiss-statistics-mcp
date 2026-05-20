@@ -21,6 +21,18 @@
 
 ---
 
+## Maturity
+
+This server is **Alpha (0.x)** as per the [PyPI classifier](https://pypi.org/classifiers/). Until 1.0:
+
+- Tool names, input schemas, and output JSON keys MAY change between minor versions
+- Pin cloud deployments to a specific git tag, not `main`
+- Production use is acceptable for read-only Open Data scenarios; consider it experimental for anything user-facing
+
+See [CHANGELOG.md](./CHANGELOG.md) for breaking changes.
+
+---
+
 ## Overview
 
 `swiss-statistics-mcp` provides AI-native access to the Swiss Federal Statistical Office (BFS) via the STAT-TAB PxWeb API, without authentication:

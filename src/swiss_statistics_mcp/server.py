@@ -45,6 +45,16 @@ CATALOG_CACHE_TTL = 3600  # 1 hour
 METADATA_CACHE_TTL = 3600  # 1 hour
 FANOUT_CONCURRENCY = 5  # parallel metadata fetches per fan-out tool call
 
+# Defense-in-depth allowlist for BFS table identifiers. The value is
+# interpolated into URL path segments (`{BFS_API_BASE}/{lang}/{dbid}/...`),
+# so we reject anything that's not the BFS-canonical
+# `px-x-1234567890_123` shape before the request leaves the process.
+# httpx encodes path segments correctly even without this, but having the
+# guard at the input boundary (a) shortens error feedback, and (b) keeps
+# any future cache key or log statement from carrying unexpected
+# characters. (SEC-008)
+BFS_TABLE_ID_PATTERN = r"^px-[a-z]-\d{8,12}_\d{1,4}$"
+
 # Retry policy for outbound BFS calls. Defaults absorb the typical 503/504
 # blips from PxWeb without inflating tail latency on the common-case happy
 # path. Override via env for tests or aggressive deployments.
@@ -426,7 +436,7 @@ class GetTableMetadataInput(BaseModel):
             "BFS table/database ID, e.g. 'px-x-1504000000_173'. "
             "Obtain from bfs_search_tables or bfs_list_tables_by_theme."
         ),
-        min_length=5,
+        pattern=BFS_TABLE_ID_PATTERN,
     )
     lang: str = Field(
         default="de",
@@ -453,7 +463,7 @@ class GetDataInput(BaseModel):
     table_id: str = Field(
         ...,
         description="BFS table ID, e.g. 'px-x-1504000000_173'",
-        min_length=5,
+        pattern=BFS_TABLE_ID_PATTERN,
     )
     filters: list[DimensionFilter] | None = Field(
         default=None,
@@ -534,7 +544,7 @@ class CompareCantonsInput(BaseModel):
     table_id: str = Field(
         ...,
         description="BFS table ID to compare across cantons",
-        min_length=5,
+        pattern=BFS_TABLE_ID_PATTERN,
     )
     canton_values: list[str] = Field(
         ...,

@@ -21,6 +21,18 @@
 
 ---
 
+## Reifegrad
+
+Dieser Server befindet sich im **Alpha-Stadium (0.x)** gemäss [PyPI-Classifier](https://pypi.org/classifiers/). Bis zur Version 1.0:
+
+- Tool-Namen, Input-Schemas und Output-JSON-Keys KÖNNEN sich zwischen Minor-Versionen ändern
+- Cloud-Deployments auf einen spezifischen Git-Tag pinnen, nicht auf `main`
+- Produktiv-Einsatz für Read-Only-Open-Data-Szenarien akzeptabel; für User-facing-Use-Cases als experimentell behandeln
+
+Breaking Changes siehe [CHANGELOG.md](./CHANGELOG.md).
+
+---
+
 ## Übersicht
 
 `swiss-statistics-mcp` ermöglicht KI-Assistenten den direkten Zugang zur STAT-TAB-Datenbank des Bundesamts für Statistik (BFS) — ohne Authentifizierung:
