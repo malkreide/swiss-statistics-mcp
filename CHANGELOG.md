@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Structured JSON logging on stderr: one `tool_start` and one `tool_end` event
+  per tool call, with `rid` correlation id, `params_keys`, `status`,
+  `duration_ms`, and `error_type` on failure. Level configurable via
+  `MCP_LOG_LEVEL` (default `INFO`). Addresses audit findings OBS-001,
+  OBS-002, OBS-003, SEC-014.
+
 ### Security
 - Streamable-HTTP transport now binds to `127.0.0.1` by default instead of all
   interfaces. Set `MCP_HOST=0.0.0.0` or pass `--host 0.0.0.0` to expose on a

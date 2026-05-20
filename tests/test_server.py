@@ -10,6 +10,7 @@ Three tiers:
 from __future__ import annotations
 
 import json
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -550,6 +551,73 @@ class TestTransportBinding:
     def test_default_host_is_loopback(self):
         from swiss_statistics_mcp.server import mcp
         assert mcp.settings.host == "127.0.0.1"
+
+
+# ---------------------------------------------------------------------------
+# Logging tests (OBS-001, OBS-002, OBS-003, SEC-014)
+# ---------------------------------------------------------------------------
+
+class TestToolLogging:
+    """Every tool call must emit a start and an end JSON log on stderr,
+    tagged with a correlation id (`rid`) and a `duration_ms`."""
+
+    @pytest.mark.asyncio
+    async def test_emits_start_and_end_events(self, caplog):
+        from swiss_statistics_mcp.server import (
+            _LOGGER,
+            ListThemesInput,
+            bfs_list_themes,
+        )
+
+        with caplog.at_level(logging.INFO, logger="swiss_statistics_mcp"):
+            # Ensure our logger propagates to caplog for assertion purposes
+            _LOGGER.propagate = True
+            try:
+                await bfs_list_themes(ListThemesInput())
+            finally:
+                _LOGGER.propagate = False
+
+        events = [r.msg for r in caplog.records if isinstance(r.msg, dict)]
+        starts = [e for e in events if e.get("event") == "tool_start"]
+        ends = [e for e in events if e.get("event") == "tool_end"]
+
+        assert len(starts) == 1, f"expected 1 tool_start, got {events}"
+        assert len(ends) == 1, f"expected 1 tool_end, got {events}"
+
+        start, end = starts[0], ends[0]
+        assert start["tool"] == "bfs_list_themes"
+        assert start["rid"] == end["rid"]  # correlation id pairs start/end
+        assert len(start["rid"]) == 8
+        assert end["status"] == "ok"
+        assert isinstance(end["duration_ms"], int)
+        assert end["duration_ms"] >= 0
+
+    def test_default_log_level_is_info(self):
+        from swiss_statistics_mcp.server import _LOGGER
+        assert _LOGGER.level == logging.INFO
+
+    def test_log_level_honors_env(self, monkeypatch):
+        monkeypatch.setenv("MCP_LOG_LEVEL", "WARNING")
+        from swiss_statistics_mcp.server import _configure_logger
+        log = _configure_logger()
+        try:
+            assert log.level == logging.WARNING
+        finally:
+            log.setLevel(logging.INFO)
+
+    def test_json_formatter_renders_dict_msg(self):
+        from swiss_statistics_mcp.server import _JsonFormatter
+        record = logging.LogRecord(
+            name="swiss_statistics_mcp", level=logging.INFO, pathname=__file__,
+            lineno=1, msg={"event": "tool_end", "tool": "bfs_x", "status": "ok"},
+            args=(), exc_info=None,
+        )
+        out = _JsonFormatter().format(record)
+        decoded = json.loads(out)
+        assert decoded["event"] == "tool_end"
+        assert decoded["tool"] == "bfs_x"
+        assert decoded["status"] == "ok"
+        assert decoded["level"] == "INFO"
 
 
 # ---------------------------------------------------------------------------

@@ -12,8 +12,14 @@ No authentication required. Open data under BFS usage terms.
 
 from __future__ import annotations
 
+import functools
 import json
+import logging
+import os
+import sys
 import time
+import uuid
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -28,6 +34,96 @@ BFS_API_BASE = "https://www.pxweb.bfs.admin.ch/api/v1"
 DEFAULT_LANGUAGE = "de"
 HTTP_TIMEOUT = 30.0
 CATALOG_CACHE_TTL = 3600  # 1 hour
+
+
+# ---------------------------------------------------------------------------
+# Logging (OBS-001, OBS-002, OBS-003, SEC-014)
+# ---------------------------------------------------------------------------
+#
+# Logs are emitted to stderr as JSON so cloud log aggregators (Render, etc.)
+# can index per-tool latency and errors. stdout is reserved for the MCP
+# protocol on stdio transport — never write logs there.
+
+class _JsonFormatter(logging.Formatter):
+    """JSON formatter that accepts dict-shaped records and falls back to
+    plain messages for library logs."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, Any] = {
+            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "logger": record.name,
+        }
+        if isinstance(record.msg, dict):
+            payload.update(record.msg)
+        else:
+            payload["msg"] = record.getMessage()
+        if record.exc_info:
+            payload["exc_info"] = self.formatException(record.exc_info)
+        return json.dumps(payload, ensure_ascii=False)
+
+
+def _configure_logger() -> logging.Logger:
+    log = logging.getLogger("swiss_statistics_mcp")
+    if not log.handlers:
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setFormatter(_JsonFormatter())
+        log.addHandler(handler)
+        log.propagate = False
+    log.setLevel(os.environ.get("MCP_LOG_LEVEL", "INFO").upper())
+    return log
+
+
+_LOGGER = _configure_logger()
+
+
+def _logged_tool(tool_name: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Wrap an MCP tool with start/end JSON logs.
+
+    Emits one `tool_start` and one `tool_end` event per call, both tagged
+    with a per-call `rid` (correlation id) and `duration_ms` on the end
+    event. Param **keys** (not values) are logged to avoid surfacing user
+    input — values may contain locale strings or query text, and keeping
+    the field list keys-only sidesteps any future privacy concern when
+    the same plumbing is reused on PII data.
+    """
+    def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(fn)
+        async def wrapper(params: BaseModel, *args: Any, **kwargs: Any) -> Any:
+            rid = uuid.uuid4().hex[:8]
+            t0 = time.monotonic()
+            try:
+                param_keys = sorted(params.model_dump(exclude_none=True).keys())
+            except Exception:
+                param_keys = []
+            _LOGGER.info({
+                "event": "tool_start",
+                "tool": tool_name,
+                "rid": rid,
+                "params_keys": param_keys,
+            })
+            try:
+                result = await fn(params, *args, **kwargs)
+                _LOGGER.info({
+                    "event": "tool_end",
+                    "tool": tool_name,
+                    "rid": rid,
+                    "status": "ok",
+                    "duration_ms": int((time.monotonic() - t0) * 1000),
+                })
+                return result
+            except Exception as e:
+                _LOGGER.info({
+                    "event": "tool_end",
+                    "tool": tool_name,
+                    "rid": rid,
+                    "status": "error",
+                    "error_type": type(e).__name__,
+                    "duration_ms": int((time.monotonic() - t0) * 1000),
+                })
+                raise
+        return wrapper
+    return decorator
 
 BFS_THEMES: dict[str, str] = {
     "01": "Bevölkerung",
@@ -466,6 +562,7 @@ mcp = FastMCP(
         "openWorldHint": False,
     },
 )
+@_logged_tool("bfs_list_themes")
 async def bfs_list_themes(params: ListThemesInput) -> str:
     """List all 21 BFS statistical themes with their codes and dataset counts.
 
@@ -535,6 +632,7 @@ async def bfs_list_themes(params: ListThemesInput) -> str:
         "openWorldHint": False,
     },
 )
+@_logged_tool("bfs_list_tables_by_theme")
 async def bfs_list_tables_by_theme(params: ListTablesByThemeInput) -> str:
     """List available statistical tables for a specific BFS theme.
 
@@ -628,6 +726,7 @@ async def bfs_list_tables_by_theme(params: ListTablesByThemeInput) -> str:
         "openWorldHint": False,
     },
 )
+@_logged_tool("bfs_search_tables")
 async def bfs_search_tables(params: SearchTablesInput) -> str:
     """Search for BFS statistical tables by keyword in their titles.
 
@@ -709,6 +808,7 @@ async def bfs_search_tables(params: SearchTablesInput) -> str:
         "openWorldHint": False,
     },
 )
+@_logged_tool("bfs_get_table_metadata")
 async def bfs_get_table_metadata(params: GetTableMetadataInput) -> str:
     """Get metadata for a BFS table: title, variables, and available filter values.
 
@@ -808,6 +908,7 @@ async def bfs_get_table_metadata(params: GetTableMetadataInput) -> str:
         "openWorldHint": False,
     },
 )
+@_logged_tool("bfs_get_data")
 async def bfs_get_data(params: GetDataInput) -> str:
     """Query statistical data from a BFS table with optional filters.
 
@@ -982,6 +1083,7 @@ CANTON_POPULATION_CODE: dict[str, str] = {
         "openWorldHint": False,
     },
 )
+@_logged_tool("bfs_education_stats")
 async def bfs_education_stats(params: GetEducationStatsInput) -> str:
     """Retrieve Swiss education statistics — convenience tool for Schulamt context.
 
@@ -1066,6 +1168,7 @@ async def bfs_education_stats(params: GetEducationStatsInput) -> str:
         "openWorldHint": False,
     },
 )
+@_logged_tool("bfs_population")
 async def bfs_population(params: GetPopulationInput) -> str:
     """Retrieve Swiss population statistics by region, year, and breakdown.
 
@@ -1186,6 +1289,7 @@ async def bfs_population(params: GetPopulationInput) -> str:
         "openWorldHint": False,
     },
 )
+@_logged_tool("bfs_compare_cantons")
 async def bfs_compare_cantons(params: CompareCantonsInput) -> str:
     """Compare a BFS statistical indicator across multiple Swiss cantons.
 
@@ -1282,6 +1386,7 @@ async def bfs_compare_cantons(params: CompareCantonsInput) -> str:
         "openWorldHint": False,
     },
 )
+@_logged_tool("bfs_featured_datasets")
 async def bfs_featured_datasets(params: ListThemesInput) -> str:
     """Return a curated list of high-value BFS datasets for Schulamt and public administration.
 
