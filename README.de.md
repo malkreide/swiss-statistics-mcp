@@ -4,7 +4,7 @@
 
 # 📊 swiss-statistics-mcp
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-purple)](https://modelcontextprotocol.io/)
@@ -184,6 +184,44 @@ Für den Einsatz via **claude.ai im Browser** (z.B. auf verwalteten Arbeitsplät
 5. In claude.ai unter Settings → MCP Servers eintragen: `https://your-app.onrender.com/sse`
 
 > 💡 *«stdio für den Entwickler-Laptop, SSE für den Browser.»*
+
+---
+
+## Output-Schema
+
+Seit `v0.2.0` liefert jedes Tool ein typisiertes Pydantic-Model statt eines
+JSON-Strings. FastMCP serialisiert das als strukturierten Content, sodass
+MCP-Clients die Felder direkt lesen können.
+
+```python
+# Alt (vor 0.2.0)
+result = await bfs_get_data(...)        # str
+data = json.loads(result)               # dict
+print(data["rows_total"])
+
+# Neu (>= 0.2.0)
+result = await bfs_get_data(...)        # DataTableResult
+print(result.rows_total)                # 1000
+print(result.truncated)                 # True
+```
+
+Jedes Result hat top-level `error: str | None` und `hint: str | None` —
+`result.error is None` bedeutet Erfolg. Daten-Tools (`bfs_get_data`,
+`bfs_education_stats`, `bfs_population`, `bfs_compare_cantons`) liefern
+zusätzlich `truncated: bool`, `rows_total: int`, `rows_returned: int`
+für maschinen-lesbare Trunkierungs-Erkennung.
+
+| Tool | Result-Type |
+|------|-------------|
+| `bfs_list_themes` | `ListThemesResult` |
+| `bfs_list_tables_by_theme` | `ListTablesByThemeResult` |
+| `bfs_search_tables` | `SearchTablesResult` |
+| `bfs_get_table_metadata` | `TableMetadataResult` |
+| `bfs_get_data` | `DataTableResult` |
+| `bfs_education_stats` | `DataTableResult` |
+| `bfs_population` | `DataTableResult` |
+| `bfs_compare_cantons` | `DataTableResult` |
+| `bfs_featured_datasets` | `FeaturedDatasetsResult` |
 
 ---
 

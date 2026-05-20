@@ -141,8 +141,9 @@ class TestJsonStat2Formatting:
         result = _format_jsonstat2_as_table(data)
 
         assert result["title"] == "Lehrkräfte Test"
-        assert result["total_rows"] == 4
-        assert result["returned_rows"] == 4
+        assert result["rows_total"] == 4
+        assert result["rows_returned"] == 4
+        assert result["truncated"] is False
         assert len(result["rows"]) == 4
         assert result["rows"][0]["Schuljahr"] == "2022/23"
         assert result["rows"][0]["Kanton"] == "Zürich"
@@ -153,8 +154,9 @@ class TestJsonStat2Formatting:
         data = _mock_jsonstat2_response()
         result = _format_jsonstat2_as_table(data, max_rows=2)
 
-        assert result["returned_rows"] == 2
-        assert result["total_rows"] == 4
+        assert result["rows_returned"] == 2
+        assert result["rows_total"] == 4
+        assert result["truncated"] is True
         assert len(result["rows"]) == 2
 
     def test_dimensions_included(self):
@@ -215,7 +217,7 @@ class TestBfsListThemes:
             return_value=_mock_all_dbs_response(),
         ):
             result = await bfs_list_themes(ListThemesInput(lang="de"))
-            data = json.loads(result)
+            data = result.model_dump(exclude_none=True)
 
         assert "themes" in data
         assert len(data["themes"]) == 21
@@ -231,7 +233,7 @@ class TestBfsListThemes:
             return_value=_mock_all_dbs_response(),
         ):
             result = await bfs_list_themes(ListThemesInput(lang="de"))
-            data = json.loads(result)
+            data = result.model_dump(exclude_none=True)
 
         codes = [t["code"] for t in data["themes"]]
         assert "15" in codes  # Bildung
@@ -252,7 +254,7 @@ class TestBfsGetTableMetadata:
             result = await bfs_get_table_metadata(
                 GetTableMetadataInput(table_id="px-x-1504000000_173", lang="de")
             )
-            data = json.loads(result)
+            data = result.model_dump(exclude_none=True)
 
         assert "variables" in data
         assert data["n_variables"] == 3
@@ -270,7 +272,7 @@ class TestBfsGetTableMetadata:
             result = await bfs_get_table_metadata(
                 GetTableMetadataInput(table_id="px-x-1504000000_173", lang="de")
             )
-            data = json.loads(result)
+            data = result.model_dump(exclude_none=True)
 
         assert data["theme_code"] == "15"
         assert "Bildung" in data["theme_name"]
@@ -293,7 +295,7 @@ class TestBfsGetTableMetadata:
             result = await bfs_get_table_metadata(
                 GetTableMetadataInput(table_id="px-x-9999999999_999", lang="de")
             )
-            data = json.loads(result)
+            data = result.model_dump(exclude_none=True)
 
         assert "error" in data
         assert "hint" in data
@@ -312,7 +314,7 @@ class TestBfsGetData:
             result = await bfs_get_data(
                 GetDataInput(table_id="px-x-1504000000_173")
             )
-            data = json.loads(result)
+            data = result.model_dump(exclude_none=True)
 
         assert "rows" in data
         assert "title" in data
@@ -366,11 +368,13 @@ class TestBfsGetData:
             result = await bfs_get_data(
                 GetDataInput(table_id="px-x-1504000000_173", max_rows=100)
             )
-            data = json.loads(result)
+            data = result.model_dump(exclude_none=True)
 
-        assert "warning" in data
-        assert data["returned_rows"] == 100
-        assert data["total_rows"] == 1000
+        # ARCH-009: machine-readable truncation signal instead of German prose
+        assert data["truncated"] is True
+        assert data["rows_returned"] == 100
+        assert data["rows_total"] == 1000
+        assert "note" in data and "begrenzt" in data["note"]
 
 
 class TestBfsEducationStats:
@@ -386,7 +390,7 @@ class TestBfsEducationStats:
             result = await bfs_education_stats(
                 GetEducationStatsInput(topic="teachers", lang="de")
             )
-            data = json.loads(result)
+            data = result.model_dump(exclude_none=True)
 
         assert data["topic"] == "teachers"
         assert "rows" in data
@@ -420,7 +424,7 @@ class TestBfsEducationStats:
         result = await bfs_education_stats(
             GetEducationStatsInput(topic="teachers", canton="Fantasialand")
         )
-        data = json.loads(result)
+        data = result.model_dump(exclude_none=True)
         assert "error" in data
 
 
@@ -435,7 +439,7 @@ class TestBfsPopulation:
             return_value=_mock_jsonstat2_response(),
         ):
             result = await bfs_population(GetPopulationInput(region="Zürich"))
-            data = json.loads(result)
+            data = result.model_dump(exclude_none=True)
 
         assert data["region"] == "Zürich"
         assert "rows" in data
@@ -482,7 +486,7 @@ class TestBfsCompareCanstons:
                         canton_values=["0", "1", "2"],
                     )
                 )
-                data = json.loads(result)
+                data = result.model_dump(exclude_none=True)
 
         assert "rows" in data
         assert data["cantons_compared"] == ["0", "1", "2"]
@@ -495,7 +499,7 @@ class TestBfsFeaturedDatasets:
         from swiss_statistics_mcp.server import ListThemesInput, bfs_featured_datasets
 
         result = await bfs_featured_datasets(ListThemesInput(lang="de"))
-        data = json.loads(result)
+        data = result.model_dump(exclude_none=True)
 
         assert "featured_datasets" in data
         assert data["total"] >= 10
@@ -505,7 +509,7 @@ class TestBfsFeaturedDatasets:
         from swiss_statistics_mcp.server import ListThemesInput, bfs_featured_datasets
 
         result = await bfs_featured_datasets(ListThemesInput(lang="de"))
-        data = json.loads(result)
+        data = result.model_dump(exclude_none=True)
 
         teacher_entry = next(
             (d for d in data["featured_datasets"] if d["table_id"] == "px-x-1504000000_173"),
@@ -760,7 +764,7 @@ class TestFanoutConcurrency:
         )
         elapsed = time_mod.monotonic() - t0
 
-        data = json.loads(result)
+        data = result.model_dump(exclude_none=True)
         assert isinstance(data.get("tables"), list)
         # 5× 50ms parallel ≈ 50ms; allow generous headroom for CI noise.
         assert elapsed < 0.20, f"expected parallel fan-out, took {elapsed:.3f}s"
@@ -804,7 +808,7 @@ class TestErrorSanitization:
         finally:
             _LOGGER.propagate = False
 
-        data = json.loads(result)
+        data = result.model_dump(exclude_none=True)
 
         # Client side: sanitized
         assert "error" in data
@@ -912,7 +916,7 @@ class TestLiveAPI:
     async def test_live_list_themes(self):
         from swiss_statistics_mcp.server import ListThemesInput, bfs_list_themes
         result = await bfs_list_themes(ListThemesInput(lang="de"))
-        data = json.loads(result)
+        data = result.model_dump(exclude_none=True)
         assert data["total_datasets"] > 600
 
     @pytest.mark.asyncio
@@ -921,7 +925,7 @@ class TestLiveAPI:
         result = await bfs_get_table_metadata(
             GetTableMetadataInput(table_id="px-x-1504000000_173", lang="de")
         )
-        data = json.loads(result)
+        data = result.model_dump(exclude_none=True)
         assert "Lehrkräfte" in data["title"]
         assert len(data["variables"]) >= 3
 
@@ -931,7 +935,7 @@ class TestLiveAPI:
         result = await bfs_education_stats(
             GetEducationStatsInput(topic="teachers", canton="Zürich")
         )
-        data = json.loads(result)
+        data = result.model_dump(exclude_none=True)
         assert "rows" in data
         assert len(data["rows"]) > 0
 
@@ -941,6 +945,6 @@ class TestLiveAPI:
         result = await bfs_population(
             GetPopulationInput(region="Zürich", year="2024", breakdown="total")
         )
-        data = json.loads(result)
+        data = result.model_dump(exclude_none=True)
         assert "rows" in data
         assert len(data["rows"]) > 0

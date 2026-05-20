@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-20
+
+### Changed (BREAKING)
+- All 9 tools now return typed Pydantic models instead of JSON strings.
+  FastMCP serializes these as structured content, so clients can read
+  fields directly and follow-up calls can be typed against the output
+  schema. Client code that previously called `json.loads(result)` should
+  now access `result.field` (or `result.model_dump()` for a dict view).
+  Affected tools and their result types:
+    - `bfs_list_themes` → `ListThemesResult`
+    - `bfs_list_tables_by_theme` → `ListTablesByThemeResult`
+    - `bfs_search_tables` → `SearchTablesResult`
+    - `bfs_get_table_metadata` → `TableMetadataResult`
+    - `bfs_get_data` → `DataTableResult`
+    - `bfs_education_stats` → `DataTableResult`
+    - `bfs_population` → `DataTableResult`
+    - `bfs_compare_cantons` → `DataTableResult`
+    - `bfs_featured_datasets` → `FeaturedDatasetsResult`
+  Addresses audit finding ARCH-005.
+
+### Added
+- Machine-readable truncation signal on data-returning tools:
+  `truncated: bool`, `rows_total: int`, `rows_returned: int` are now
+  first-class fields instead of being buried in a German `warning` prose
+  string. The German message survives as the `note` field for human
+  display. Addresses audit finding ARCH-009.
+- Explicit error discrimination: every result type carries optional
+  top-level `error: str | None` and `hint: str | None` fields. Clients
+  check `result.error is None` to know the call succeeded; the data
+  fields are None on error.
+
+### Removed
+- `_format_error()` helper — replaced by per-result-type error
+  construction. The unified shape lives in each result class now.
+
 ### Security
 - `table_id` input fields now enforce the BFS-canonical regex
   `^px-[a-z]-\d{8,12}_\d{1,4}$` instead of only a `min_length=5` check.

@@ -2,7 +2,7 @@
 
 # 📊 swiss-statistics-mcp
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-purple)](https://modelcontextprotocol.io/)
@@ -182,6 +182,45 @@ For use via **claude.ai in the browser** (e.g. on managed workstations without l
 5. In claude.ai under Settings → MCP Servers, add: `https://your-app.onrender.com/sse`
 
 > 💡 *"stdio for the developer laptop, SSE for the browser."*
+
+---
+
+## Output Schema
+
+Since `v0.2.0`, every tool returns a typed Pydantic model rather than a JSON
+string. FastMCP serializes these as structured content so MCP clients can
+read fields directly.
+
+```python
+# Old (pre-0.2.0)
+result = await bfs_get_data(...)        # str
+data = json.loads(result)               # dict
+print(data["rows_total"])
+
+# New (>= 0.2.0)
+result = await bfs_get_data(...)        # DataTableResult
+print(result.rows_total)                # 1000
+print(result.truncated)                 # True
+```
+
+Every result carries `error: str | None` and `hint: str | None` at the top
+level — `result.error is None` means success. Data-returning tools
+(`bfs_get_data`, `bfs_education_stats`, `bfs_population`,
+`bfs_compare_cantons`) additionally expose `truncated: bool`,
+`rows_total: int`, and `rows_returned: int` for machine-readable cap
+detection.
+
+| Tool | Result type |
+|------|-------------|
+| `bfs_list_themes` | `ListThemesResult` |
+| `bfs_list_tables_by_theme` | `ListTablesByThemeResult` |
+| `bfs_search_tables` | `SearchTablesResult` |
+| `bfs_get_table_metadata` | `TableMetadataResult` |
+| `bfs_get_data` | `DataTableResult` |
+| `bfs_education_stats` | `DataTableResult` |
+| `bfs_population` | `DataTableResult` |
+| `bfs_compare_cantons` | `DataTableResult` |
+| `bfs_featured_datasets` | `FeaturedDatasetsResult` |
 
 ---
 
