@@ -12,6 +12,7 @@ No authentication required. Open data under BFS usage terms.
 
 from __future__ import annotations
 
+import asyncio
 import functools
 import json
 import logging
@@ -25,6 +26,13 @@ from typing import Any
 import httpx
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field
+from tenacity import (
+    AsyncRetrying,
+    RetryError,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -34,6 +42,15 @@ BFS_API_BASE = "https://www.pxweb.bfs.admin.ch/api/v1"
 DEFAULT_LANGUAGE = "de"
 HTTP_TIMEOUT = 30.0
 CATALOG_CACHE_TTL = 3600  # 1 hour
+METADATA_CACHE_TTL = 3600  # 1 hour
+FANOUT_CONCURRENCY = 5  # parallel metadata fetches per fan-out tool call
+
+# Retry policy for outbound BFS calls. Defaults absorb the typical 503/504
+# blips from PxWeb without inflating tail latency on the common-case happy
+# path. Override via env for tests or aggressive deployments.
+RETRY_MAX_ATTEMPTS = int(os.environ.get("MCP_RETRY_MAX_ATTEMPTS", "3"))
+RETRY_WAIT_INITIAL = float(os.environ.get("MCP_RETRY_WAIT_INITIAL", "0.5"))
+RETRY_WAIT_MAX = float(os.environ.get("MCP_RETRY_WAIT_MAX", "4.0"))
 
 
 # ---------------------------------------------------------------------------
@@ -174,23 +191,70 @@ _catalog_timestamp: float = 0.0
 
 
 # ---------------------------------------------------------------------------
-# HTTP helpers
+# HTTP helpers (SEC-018, SCALE-002)
 # ---------------------------------------------------------------------------
+#
+# All outbound BFS calls run through `_get`/`_post` and inherit the same
+# retry policy: up to 3 attempts on transient errors (5xx, 429, network
+# errors), with exponential backoff. 4xx errors are surfaced immediately
+# because retrying client errors only wastes upstream quota.
+
+_TRANSIENT_HTTP_STATUSES = {429, 500, 502, 503, 504}
+
+
+def _is_transient(exc: BaseException) -> bool:
+    if isinstance(
+        exc,
+        (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError, httpx.WriteError),
+    ):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in _TRANSIENT_HTTP_STATUSES
+    return False
+
+
+async def _retrying_http(coro_factory: Callable[[], Any]) -> Any:
+    """Run `coro_factory()` with retry on transient errors.
+
+    `coro_factory` is a zero-arg callable returning a coroutine; we call it
+    fresh on each retry so a new `AsyncClient` is opened per attempt
+    (httpx clients are not safe to reuse after errors).
+    """
+    try:
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(RETRY_MAX_ATTEMPTS),
+            wait=wait_exponential(
+                multiplier=RETRY_WAIT_INITIAL,
+                min=RETRY_WAIT_INITIAL,
+                max=RETRY_WAIT_MAX,
+            ),
+            retry=retry_if_exception(_is_transient),
+            reraise=True,
+        ):
+            with attempt:
+                return await coro_factory()
+    except RetryError as e:  # pragma: no cover — reraise=True usually raises the wrapped exc
+        raise e.last_attempt.exception() from e
+
 
 async def _get(url: str) -> Any:
-    """Perform a GET request and return parsed JSON."""
-    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
-        return resp.json()
+    """Perform a GET request and return parsed JSON, with retry on transient errors."""
+    async def _do() -> Any:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            return resp.json()
+    return await _retrying_http(_do)
 
 
 async def _post(url: str, body: dict[str, Any]) -> Any:
-    """Perform a POST request and return parsed JSON."""
-    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-        resp = await client.post(url, json=body)
-        resp.raise_for_status()
-        return resp.json()
+    """Perform a POST request and return parsed JSON, with retry on transient errors."""
+    async def _do() -> Any:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            resp = await client.post(url, json=body)
+            resp.raise_for_status()
+            return resp.json()
+    return await _retrying_http(_do)
 
 
 def _theme_code_from_dbid(dbid: str) -> str:
@@ -217,6 +281,31 @@ def _format_error(msg: str, hint: str = "") -> str:
     if hint:
         result["hint"] = hint
     return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Metadata cache (SCALE-003)
+# ---------------------------------------------------------------------------
+#
+# Table metadata (variables, value domains, last_updated) is effectively
+# stable between BFS publishing windows. Caching by (dbid, lang) for an
+# hour collapses the listing / detail / compare flows from N round-trips
+# to 1 after the first warm-up.
+
+_metadata_cache: dict[tuple[str, str], dict[str, Any]] = {}
+_metadata_timestamps: dict[tuple[str, str], float] = {}
+
+
+async def _fetch_metadata_cached(dbid: str, lang: str) -> dict[str, Any]:
+    key = (dbid, lang)
+    now = time.time()
+    cached_at = _metadata_timestamps.get(key, 0.0)
+    if key in _metadata_cache and (now - cached_at) < METADATA_CACHE_TTL:
+        return _metadata_cache[key]
+    meta = await _get(_format_table_url(dbid, lang))
+    _metadata_cache[key] = meta
+    _metadata_timestamps[key] = now
+    return meta
 
 
 # ---------------------------------------------------------------------------
@@ -674,32 +763,30 @@ async def bfs_list_tables_by_theme(params: ListTablesByThemeInput) -> str:
 
         theme_name = BFS_THEMES.get(params.theme_code, params.theme_code)
 
-        # Fetch titles for subset
-        tables = []
-        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-            for db in theme_dbs[: params.limit]:
-                dbid = db["dbid"]
+        # Fan-out metadata fetches with a Semaphore to avoid hammering BFS.
+        # Each fetch goes through `_fetch_metadata_cached`, so warm calls
+        # are O(1) and only cold IDs hit the wire. (SCALE-003, SCALE-004)
+        sem = asyncio.Semaphore(FANOUT_CONCURRENCY)
+        selected = [db["dbid"] for db in theme_dbs[: params.limit]]
+
+        async def fetch_one(dbid: str) -> dict[str, Any]:
+            async with sem:
                 try:
-                    meta_url = _format_table_url(dbid, params.lang)
-                    resp = await client.get(meta_url)
-                    if resp.status_code == 200:
-                        meta = resp.json()
-                        tables.append(
-                            {
-                                "table_id": dbid,
-                                "title": meta.get("title", dbid),
-                                "last_updated": meta.get("updated", ""),
-                                "n_variables": len(meta.get("variables", [])),
-                                "featured": dbid in FEATURED_TABLES,
-                            }
-                        )
-                    else:
-                        tables.append({"table_id": dbid, "title": dbid})
+                    meta = await _fetch_metadata_cached(dbid, params.lang)
+                    return {
+                        "table_id": dbid,
+                        "title": meta.get("title", dbid),
+                        "last_updated": meta.get("updated", ""),
+                        "n_variables": len(meta.get("variables", [])),
+                        "featured": dbid in FEATURED_TABLES,
+                    }
                 except Exception:
                     _LOGGER.warning(
                         "table metadata fetch failed for %s", dbid, exc_info=True
                     )
-                    tables.append({"table_id": dbid, "title": dbid})
+                    return {"table_id": dbid, "title": dbid}
+
+        tables = await asyncio.gather(*(fetch_one(dbid) for dbid in selected))
 
         return json.dumps(
             {
@@ -856,8 +943,7 @@ async def bfs_get_table_metadata(params: GetTableMetadataInput) -> str:
         }
     """
     try:
-        url = _format_table_url(params.table_id, params.lang)
-        meta = await _get(url)
+        meta = await _fetch_metadata_cached(params.table_id, params.lang)
 
         variables = []
         for var in meta.get("variables", []):
@@ -1352,9 +1438,9 @@ async def bfs_compare_cantons(params: CompareCantonsInput) -> str:
         # Build query with canton filter
         query: list[dict[str, Any]] = []
 
-        # Find canton variable name from metadata first
-        meta_url = _format_table_url(params.table_id, params.lang)
-        meta = await _get(meta_url)
+        # Find canton variable name from metadata first (cache-hit if any
+        # previous tool resolved this table)
+        meta = await _fetch_metadata_cached(params.table_id, params.lang)
 
         canton_var_code = None
         for var in meta.get("variables", []):
