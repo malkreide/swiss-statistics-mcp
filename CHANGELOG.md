@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- `table_id` input fields now enforce the BFS-canonical regex
+  `^px-[a-z]-\d{8,12}_\d{1,4}$` instead of only a `min_length=5` check.
+  Defense-in-depth: malformed identifiers are rejected at the Pydantic
+  boundary before any URL interpolation, cache lookup, or log statement.
+  Addresses audit finding SEC-008.
+- CI now runs `bandit -r src/ -ll` (static security scan) and
+  `pip-audit` (dependency CVE scan) as a dedicated `security` job
+  on every push and PR. Addresses audit finding OPS-001.
+
+### Documentation
+- New README "Maturity" section (DE + EN) flags Alpha status and
+  recommends pinning cloud deployments to git tags rather than `main`.
+  Addresses audit finding OPS-003.
+
 ### Added
 - Retry on transient BFS-API errors (`5xx`, `429`, network failures): up to
   3 attempts with exponential backoff (0.5s → 4s). 4xx errors surface
