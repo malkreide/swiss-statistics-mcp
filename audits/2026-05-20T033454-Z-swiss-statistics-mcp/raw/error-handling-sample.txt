@@ -1,0 +1,58 @@
+                ),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    except httpx.HTTPStatusError as e:
+        return _format_error(
+            f"API-Fehler {e.response.status_code}",
+            "BFS STAT-TAB API nicht erreichbar. Bitte später nochmals versuchen.",
+        )
+    except Exception as e:
+        return _format_error(f"Unerwarteter Fehler: {type(e).__name__}: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Tool: List tables by theme
+                        )
+                    else:
+                        tables.append({"table_id": dbid, "title": dbid})
+                except Exception:
+                    tables.append({"table_id": dbid, "title": dbid})
+
+        return json.dumps(
+            {
+                "theme_code": params.theme_code,
+                "theme_name": theme_name,
+                "total_in_theme": len(theme_dbs),
+                "returned": len(tables),
+                "tables": tables,
+                "next_step": (
+                    "Verwende bfs_get_table_metadata(table_id='...') "
+                    "um Variablen und Filter-Werte zu sehen."
+                ),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    except httpx.HTTPStatusError as e:
+        return _format_error(f"API-Fehler {e.response.status_code}")
+    except Exception as e:
+        return _format_error(f"Fehler: {type(e).__name__}: {e}")
+
+        )
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return _format_error(
+                f"Tabelle '{params.table_id}' nicht gefunden.",
+                "Verwende bfs_search_tables oder bfs_list_tables_by_theme um gültige IDs zu finden.",
+            )
+        return _format_error(f"API-Fehler {e.response.status_code}")
+    except Exception as e:
+        return _format_error(f"Fehler: {type(e).__name__}: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Tool: Get data
+# ---------------------------------------------------------------------------
+

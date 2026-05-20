@@ -1,0 +1,15 @@
+1:> 🇨🇭 **Part of the [Swiss Public Data MCP Portfolio](https://github.com/malkreide)**
+9:[![No Auth Required](https://img.shields.io/badge/auth-none%20required-brightgreen)](https://github.com/malkreide/swiss-statistics-mcp)
+12:> MCP Server for Swiss Federal Statistical Office (BFS) data via STAT-TAB PxWeb API — 682 datasets across 21 themes, no authentication required
+26:`swiss-statistics-mcp` provides AI-native access to the Swiss Federal Statistical Office (BFS) via the STAT-TAB PxWeb API, without authentication:
+36:| **Authentication** | None — fully public |
+49:- ☁️ **Dual transport** — stdio (Claude Desktop) + Streamable HTTP (cloud)
+141:### Cloud Deployment (SSE for browser access)
+145:**Render.com (recommended):**
+147:2. On [render.com](https://render.com): New Web Service → connect GitHub repo
+149:4. In claude.ai under Settings → MCP Servers, add: `https://your-app.onrender.com/sse`
+212:                        │  No authentication required  │
+218:| Source | Protocol | Coverage | Auth |
+268:- **Rate limits:** The PxWeb API is a public endpoint without documented rate limits; avoid tight loops over the full 682-table catalogue. The server enforces a 30s timeout per request and caches the catalogue index for 1 hour.
+293:## Author
+309:- **Portfolio:** [Swiss Public Data MCP Portfolio](https://github.com/malkreide)

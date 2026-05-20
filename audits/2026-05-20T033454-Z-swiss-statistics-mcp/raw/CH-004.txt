@@ -1,0 +1,22 @@
+=== BFS terms/licence mentions ===
+6:[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+12:> MCP Server for Swiss Federal Statistical Office (BFS) data via STAT-TAB PxWeb API — 682 datasets across 21 themes, no authentication required
+20:![Demo: Claude using bfs_education_stats](docs/assets/demo.svg)
+26:`swiss-statistics-mcp` provides AI-native access to the Swiss Federal Statistical Office (BFS) via the STAT-TAB PxWeb API, without authentication:
+30:| **API** | STAT-TAB PxWeb API v1 |
+31:| **Endpoint** | `https://www.pxweb.bfs.admin.ch/api/v1/` |
+32:| **Provider** | Swiss Federal Statistical Office (BFS) |
+35:| **Licence** | Open Government Data (OGD) — [BFS Terms of Use](https://www.bfs.admin.ch/bfs/en/home/grundlagen/nutzungsbedingungen.html) |
+38:**Anchor demo query:** *"How many students attended lower secondary schools in the canton of Zurich in 2024?"* — real BFS figures, no hallucination.
+45:- 🔍 **Full-text search** across the entire BFS data catalogue
+=== Datenquellen-Dokumentation in code ===
+4:Provides access to Swiss Federal Statistical Office (BFS) data
+10:No authentication required. Open data under BFS usage terms.
+27:BFS_API_BASE = "https://www.pxweb.bfs.admin.ch/api/v1"
+32:BFS_THEMES: dict[str, str] = {
+101:    """Extract the 2-digit BFS theme code from a database ID.
+112:    return f"{BFS_API_BASE}/{lang}/{dbid}/{dbid}.px"
+116:    return f"{BFS_API_BASE}/{lang}/{dbid}/{dbid}.px"
+146:    url = f"{BFS_API_BASE}/{lang}/"
+155:                meta_url = f"{BFS_API_BASE}/{lang}/{dbid}/{dbid}.px"
+186:            "2-digit BFS theme code, e.g. '15' for Bildung, '01' for Bevölkerung. "

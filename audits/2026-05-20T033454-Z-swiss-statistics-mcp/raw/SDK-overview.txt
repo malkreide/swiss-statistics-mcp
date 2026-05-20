@@ -1,0 +1,38 @@
+=== FastMCP import & version ===
+20:from mcp.server.fastmcp import FastMCP
+442:mcp = FastMCP(
+=== Lifecycle/lifespan ===
+=== Async/await ===
+26
+=== httpx client ===
+86:    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+94:    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+151:    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+515:    except httpx.HTTPStatusError as e:
+574:        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+611:    except httpx.HTTPStatusError as e:
+692:    except httpx.HTTPStatusError as e:
+786:    except httpx.HTTPStatusError as e:
+863:    except httpx.HTTPStatusError as e:
+1046:    except httpx.HTTPStatusError as e:
+=== Field validation ===
+174:    lang: str = Field(
+183:    theme_code: str = Field(
+191:    lang: str = Field(
+196:    limit: int = Field(
+206:    query: str = Field(
+215:    theme_code: str | None = Field(
+220:    lang: str = Field(
+225:    limit: int = Field(
+235:    table_id: str = Field(
+243:    lang: str = Field(
+252:    code: str = Field(..., description="Variable code from table metadata, e.g. 'Kanton'")
+253:    values: list[str] = Field(
+265:    table_id: str = Field(
+270:    filters: list[DimensionFilter] | None = Field(
+278:    lang: str = Field(
+283:    max_rows: int = Field(
+293:    topic: str = Field(
+304:    canton: str | None = Field(
+312:    lang: str = Field(
+321:    region: str = Field(

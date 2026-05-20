@@ -1,0 +1,24 @@
+=== URL building ===
+27:BFS_API_BASE = "https://www.pxweb.bfs.admin.ch/api/v1"
+112:    return f"{BFS_API_BASE}/{lang}/{dbid}/{dbid}.px"
+116:    return f"{BFS_API_BASE}/{lang}/{dbid}/{dbid}.px"
+146:    url = f"{BFS_API_BASE}/{lang}/"
+155:                meta_url = f"{BFS_API_BASE}/{lang}/{dbid}/{dbid}.px"
+483:        url = f"{BFS_API_BASE}/{params.lang}/"
+554:        url = f"{BFS_API_BASE}/{params.lang}/"
+=== User-controlled URLs ===
+87:        resp = await client.get(url)
+95:        resp = await client.post(url, json=body)
+146:    url = f"{BFS_API_BASE}/{lang}/"
+155:                meta_url = f"{BFS_API_BASE}/{lang}/{dbid}/{dbid}.px"
+156:                resp = await client.get(meta_url)
+483:        url = f"{BFS_API_BASE}/{params.lang}/"
+554:        url = f"{BFS_API_BASE}/{params.lang}/"
+578:                    meta_url = _format_table_url(dbid, params.lang)
+579:                    resp = await client.get(meta_url)
+741:        url = _format_table_url(params.table_id, params.lang)
+836:        url = _build_data_url(params.table_id, params.lang)
+1023:        url = _build_data_url(table_id, params.lang)
+1104:        url = _build_data_url(TABLE_ID, "de")
+1212:        url = _build_data_url(params.table_id, params.lang)
+1218:        meta_url = _format_table_url(params.table_id, params.lang)

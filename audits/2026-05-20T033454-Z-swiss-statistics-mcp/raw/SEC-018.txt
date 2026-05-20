@@ -1,0 +1,4 @@
+src/swiss_statistics_mcp/server.py:86:    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+src/swiss_statistics_mcp/server.py:94:    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+src/swiss_statistics_mcp/server.py:151:    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+src/swiss_statistics_mcp/server.py:574:        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:

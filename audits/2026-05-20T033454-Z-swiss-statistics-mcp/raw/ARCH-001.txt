@@ -1,0 +1,10 @@
+src/swiss_statistics_mcp/server.py:@mcp.tool(
+src/swiss_statistics_mcp/server.py:@mcp.tool(
+src/swiss_statistics_mcp/server.py:@mcp.tool(
+src/swiss_statistics_mcp/server.py:@mcp.tool(
+src/swiss_statistics_mcp/server.py:@mcp.tool(
+src/swiss_statistics_mcp/server.py:@mcp.tool(
+src/swiss_statistics_mcp/server.py:@mcp.tool(
+src/swiss_statistics_mcp/server.py:@mcp.tool(
+src/swiss_statistics_mcp/server.py:@mcp.tool(
+---FUNCTION NAMES---

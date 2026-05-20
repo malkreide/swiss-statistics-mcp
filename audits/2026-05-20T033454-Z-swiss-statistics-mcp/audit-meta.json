@@ -1,0 +1,13 @@
+{
+  "audit_meta": {
+    "server_name": "swiss-statistics-mcp",
+    "run_id": "2026-05-20T033454-Z-swiss-statistics-mcp",
+    "started_at": "2026-05-20T03:34:54.675378+00:00",
+    "timezone_offset": "Z",
+    "skill_version": "1.0.0",
+    "output_dir": "/home/user/swiss-statistics-mcp/audits/2026-05-20T033454-Z-swiss-statistics-mcp",
+    "catalog_hash": "091f446b27965044ce658a1d5f4b2cabe2b0ab5661dcc1a53b6be8f1f2e093c0",
+    "catalog_dir": "/tmp/mcp-audit-skill/checks"
+  },
+  "agent_runs": []
+}

@@ -1,0 +1,7 @@
+=== Secrets / env vars ===
+=== Hardcoded URLs ===
+src/swiss_statistics_mcp/server.py:27:BFS_API_BASE = "https://www.pxweb.bfs.admin.ch/api/v1"
+=== Input validation patterns ===
+392:        if isinstance(index_map, dict):
+=== SQL/code injection risks ===
+=== File operations ===

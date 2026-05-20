@@ -1,0 +1,60 @@
+=== Tool definitions ===
+459:@mcp.tool(
+528:@mcp.tool(
+621:@mcp.tool(
+702:@mcp.tool(
+801:@mcp.tool(
+975:@mcp.tool(
+1059:@mcp.tool(
+1179:@mcp.tool(
+1275:@mcp.tool(
+=== Tool function signatures ===
+84:async def _get(url: str) -> Any:
+92:async def _post(url: str, body: dict[str, Any]) -> Any:
+100:def _theme_code_from_dbid(dbid: str) -> str:
+111:def _format_table_url(dbid: str, lang: str = DEFAULT_LANGUAGE) -> str:
+115:def _build_data_url(dbid: str, lang: str = DEFAULT_LANGUAGE) -> str:
+119:def _format_error(msg: str, hint: str = "") -> str:
+130:async def _ensure_catalog(lang: str = DEFAULT_LANGUAGE) -> dict[str, str]:
+377:def _format_jsonstat2_as_table(data: dict[str, Any], max_rows: int = 500) -> dict[str, Any]:
+469:async def bfs_list_themes(params: ListThemesInput) -> str:
+538:async def bfs_list_tables_by_theme(params: ListTablesByThemeInput) -> str:
+631:async def bfs_search_tables(params: SearchTablesInput) -> str:
+712:async def bfs_get_table_metadata(params: GetTableMetadataInput) -> str:
+811:async def bfs_get_data(params: GetDataInput) -> str:
+985:async def bfs_education_stats(params: GetEducationStatsInput) -> str:
+1069:async def bfs_population(params: GetPopulationInput) -> str:
+1189:async def bfs_compare_cantons(params: CompareCantonsInput) -> str:
+1285:async def bfs_featured_datasets(params: ListThemesInput) -> str:
+1325:def _schulamt_relevance(table_id: str) -> str:
+=== Type hints / Pydantic ===
+21:from pydantic import BaseModel, ConfigDict, Field
+172:class ListThemesInput(BaseModel):
+174:    lang: str = Field(
+181:class ListTablesByThemeInput(BaseModel):
+183:    theme_code: str = Field(
+191:    lang: str = Field(
+196:    limit: int = Field(
+204:class SearchTablesInput(BaseModel):
+206:    query: str = Field(
+215:    theme_code: str | None = Field(
+220:    lang: str = Field(
+225:    limit: int = Field(
+233:class GetTableMetadataInput(BaseModel):
+235:    table_id: str = Field(
+243:    lang: str = Field(
+250:class DimensionFilter(BaseModel):
+252:    code: str = Field(..., description="Variable code from table metadata, e.g. 'Kanton'")
+253:    values: list[str] = Field(
+263:class GetDataInput(BaseModel):
+265:    table_id: str = Field(
+270:    filters: list[DimensionFilter] | None = Field(
+278:    lang: str = Field(
+283:    max_rows: int = Field(
+291:class GetEducationStatsInput(BaseModel):
+293:    topic: str = Field(
+304:    canton: str | None = Field(
+312:    lang: str = Field(
+319:class GetPopulationInput(BaseModel):
+321:    region: str = Field(
+329:    year: str | None = Field(

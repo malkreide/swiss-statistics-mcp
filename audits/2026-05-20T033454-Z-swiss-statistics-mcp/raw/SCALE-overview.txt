@@ -1,0 +1,34 @@
+=== timeouts ===
+29:HTTP_TIMEOUT = 30.0
+86:    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+94:    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+151:    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+574:        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+=== limits ===
+196:    limit: int = Field(
+225:    limit: int = Field(
+283:    max_rows: int = Field(
+285:        description="Maximum number of data rows to return (safety limit)",
+377:def _format_jsonstat2_as_table(data: dict[str, Any], max_rows: int = 500) -> dict[str, Any]:
+412:        if i >= max_rows:
+548:            - limit (int): Max tables to return (default 20)
+575:            for db in theme_dbs[: params.limit]:
+645:            - limit (int): Max results (default 10)
+677:        results = results[: params.limit]
+824:            - max_rows (int): Safety limit on returned rows (default 500)
+852:        result = _format_jsonstat2_as_table(data, max_rows=params.max_rows)
+854:        if result["total_rows"] > params.max_rows:
+856:                f"Datenmenge auf {params.max_rows} Zeilen begrenzt "
+1037:        result = _format_jsonstat2_as_table(data, max_rows=500)
+1158:        result = _format_jsonstat2_as_table(data, max_rows=200)
+1253:        result = _format_jsonstat2_as_table(data, max_rows=500)
+=== caching ===
+73:# In-memory catalog cache
+76:_catalog_cache: dict[str, Any] = {}
+137:    global _catalog_cache, _catalog_timestamp
+139:    cache_key = f"catalog_{lang}"
+142:    if cache_key in _catalog_cache and (now - _catalog_timestamp) < CATALOG_CACHE_TTL:
+143:        return _catalog_cache[cache_key]
+163:    _catalog_cache[cache_key] = catalog
+638:    within 1 hour use the cached catalog and are instant.
+=== concurrency ===
