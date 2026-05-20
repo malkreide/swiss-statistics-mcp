@@ -541,6 +541,60 @@ class TestInputValidation:
 
 
 # ---------------------------------------------------------------------------
+# Error sanitization tests (SEC-022, OBS-004)
+# ---------------------------------------------------------------------------
+
+class TestErrorSanitization:
+    """Generic catch-all errors must log the full trace server-side but
+    return only a sanitized message to the client — no library internals,
+    no file paths, no raw exception text."""
+
+    @pytest.mark.asyncio
+    async def test_unexpected_error_does_not_leak_internals(self, caplog):
+        from swiss_statistics_mcp.server import (
+            _LOGGER,
+            GetTableMetadataInput,
+            bfs_get_table_metadata,
+        )
+
+        # A non-HTTP error: e.g. our parser crashes on malformed JSON.
+        # The raw exception text contains a fictitious internal path that
+        # must never reach the client response.
+        secret_marker = "/internal/path/to/secret_module.py"
+        leaky_error = RuntimeError(
+            f"KeyError in {secret_marker} at line 42 — token=ABCDEF"
+        )
+
+        _LOGGER.propagate = True
+        try:
+            with patch(
+                "swiss_statistics_mcp.server._get",
+                new_callable=AsyncMock,
+                side_effect=leaky_error,
+            ), caplog.at_level(logging.ERROR, logger="swiss_statistics_mcp"):
+                result = await bfs_get_table_metadata(
+                    GetTableMetadataInput(table_id="px-x-1504000000_173", lang="de")
+                )
+        finally:
+            _LOGGER.propagate = False
+
+        data = json.loads(result)
+
+        # Client side: sanitized
+        assert "error" in data
+        assert secret_marker not in result
+        assert "RuntimeError" not in result
+        assert "token=ABCDEF" not in result
+        assert "line 42" not in result
+
+        # Server side: full trace landed in logs
+        trace_records = [r for r in caplog.records if r.exc_info]
+        assert trace_records, "expected an exc_info record from _LOGGER.exception"
+        formatted = "\n".join(r.getMessage() + str(r.exc_info[1]) for r in trace_records)
+        assert "RuntimeError" in formatted or "RuntimeError" in str(trace_records[0].exc_info)
+
+
+# ---------------------------------------------------------------------------
 # Transport / host-binding tests (SDK-004)
 # ---------------------------------------------------------------------------
 
