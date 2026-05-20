@@ -286,13 +286,6 @@ def _build_data_url(dbid: str, lang: str = DEFAULT_LANGUAGE) -> str:
     return f"{BFS_API_BASE}/{lang}/{dbid}/{dbid}.px"
 
 
-def _format_error(msg: str, hint: str = "") -> str:
-    result = {"error": msg}
-    if hint:
-        result["hint"] = hint
-    return json.dumps(result, ensure_ascii=False, indent=2)
-
-
 # ---------------------------------------------------------------------------
 # Metadata cache (SCALE-003)
 # ---------------------------------------------------------------------------
@@ -569,6 +562,153 @@ class CompareCantonsInput(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Output models (ARCH-005, ARCH-009)
+# ---------------------------------------------------------------------------
+#
+# Every tool now returns a typed Pydantic model rather than a JSON string.
+# FastMCP serialises these as structured content so clients can render
+# fields directly and follow-up tool calls can be typed against the schema.
+#
+# Each result includes `error: str | None` and `hint: str | None` at the
+# top level for explicit error discrimination — clients check
+# `result.error is None` to know the call succeeded. On error the data
+# fields are None.
+#
+# Data-returning tools (get_data, education_stats, population,
+# compare_cantons) carry `truncated: bool`, `rows_total: int`, and
+# `rows_returned: int` so clients no longer need to parse a German
+# `warning` prose string to discover that rows were capped. (ARCH-009)
+
+
+class DimensionInfo(BaseModel):
+    id: str
+    label: str
+    n_values: int
+
+
+class ThemeEntry(BaseModel):
+    code: str
+    name: str
+    dataset_count: int
+    filter_hint: str | None = None
+
+
+class TableEntry(BaseModel):
+    table_id: str
+    title: str
+    last_updated: str | None = None
+    n_variables: int | None = None
+    featured: bool | None = None
+
+
+class SearchResultEntry(BaseModel):
+    table_id: str
+    title: str
+    theme_code: str
+    theme_name: str | None = None
+    featured: bool | None = None
+
+
+class VariableValue(BaseModel):
+    code: str
+    label: str
+
+
+class VariableInfo(BaseModel):
+    code: str
+    label: str
+    n_values: int
+    values: list[VariableValue]
+    more_values: int = 0  # how many values were truncated from `values` (display cap)
+
+
+class FeaturedDatasetEntry(BaseModel):
+    table_id: str
+    title: str
+    theme_code: str | None = None
+    theme_name: str | None = None
+    schulamt_relevanz: str | None = None
+
+
+class ListThemesResult(BaseModel):
+    error: str | None = None
+    hint: str | None = None
+    total_datasets: int | None = None
+    themes: list[ThemeEntry] | None = None
+    note: str | None = None
+
+
+class ListTablesByThemeResult(BaseModel):
+    error: str | None = None
+    hint: str | None = None
+    theme_code: str | None = None
+    theme_name: str | None = None
+    total_in_theme: int | None = None
+    returned: int | None = None
+    tables: list[TableEntry] | None = None
+    next_step: str | None = None
+
+
+class SearchTablesResult(BaseModel):
+    error: str | None = None
+    hint: str | None = None
+    query: str | None = None
+    total_matches: int | None = None
+    results: list[SearchResultEntry] | None = None
+    next_step: str | None = None
+
+
+class TableMetadataResult(BaseModel):
+    error: str | None = None
+    hint: str | None = None
+    table_id: str | None = None
+    title: str | None = None
+    source: str | None = None
+    last_updated: str | None = None
+    theme_code: str | None = None
+    theme_name: str | None = None
+    language: str | None = None
+    n_variables: int | None = None
+    variables: list[VariableInfo] | None = None
+    usage_hint: str | None = None
+
+
+class DataTableResult(BaseModel):
+    error: str | None = None
+    hint: str | None = None
+    table_id: str | None = None
+    title: str | None = None
+    source: str | None = None
+    updated: str | None = None
+    language: str | None = None
+    dimensions: list[DimensionInfo] | None = None
+    rows_total: int | None = None
+    rows_returned: int | None = None
+    truncated: bool = False
+    rows: list[dict[str, Any]] | None = None
+    note: str | None = None
+    # bfs_compare_cantons extras
+    cantons_compared: list[str] | None = None
+    canton_variable: str | None = None
+    # bfs_education_stats / bfs_population extras
+    topic: str | None = None
+    topic_description: str | None = None
+    canton: str | None = None
+    canton_filter: str | None = None
+    region: str | None = None
+    breakdown: str | None = None
+    year: str | None = None
+
+
+class FeaturedDatasetsResult(BaseModel):
+    error: str | None = None
+    hint: str | None = None
+    total: int | None = None
+    featured_datasets: list[FeaturedDatasetEntry] | None = None
+    quick_start: str | None = None
+
+
+# ---------------------------------------------------------------------------
 # Response formatting helpers
 # ---------------------------------------------------------------------------
 
@@ -615,6 +755,8 @@ def _format_jsonstat2_as_table(data: dict[str, Any], max_rows: int = 500) -> dic
         row["Wert"] = value
         rows.append(row)
 
+    rows_total = len(values)
+    rows_returned = len(rows)
     return {
         "title": data.get("label", ""),
         "source": data.get("source", "BFS"),
@@ -627,8 +769,9 @@ def _format_jsonstat2_as_table(data: dict[str, Any], max_rows: int = 500) -> dic
             }
             for dim_id, sz in zip(dimensions, size)
         ],
-        "total_rows": len(values),
-        "returned_rows": len(rows),
+        "rows_total": rows_total,
+        "rows_returned": rows_returned,
+        "truncated": rows_returned < rows_total,
         "rows": rows,
     }
 
@@ -665,7 +808,7 @@ mcp = FastMCP(
     },
 )
 @_logged_tool("bfs_list_themes")
-async def bfs_list_themes(params: ListThemesInput) -> str:
+async def bfs_list_themes(params: ListThemesInput) -> ListThemesResult:
     """List all 21 BFS statistical themes with their codes and dataset counts.
 
     Returns the complete taxonomy of Swiss federal statistics. Each theme has
@@ -676,7 +819,8 @@ async def bfs_list_themes(params: ListThemesInput) -> str:
             - lang (str): Language code ('de', 'fr', 'it', 'en')
 
     Returns:
-        str: JSON with theme codes, names, and dataset counts per theme.
+        ListThemesResult with theme codes, names, dataset counts per theme.
+        On error, `error` and `hint` are set and `themes` is None.
     """
     try:
         url = f"{BFS_API_BASE}/{params.lang}/"
@@ -690,37 +834,33 @@ async def bfs_list_themes(params: ListThemesInput) -> str:
                 theme_counts[code] += 1
 
         themes = [
-            {
-                "code": code,
-                "name": name,
-                "dataset_count": theme_counts.get(code, 0),
-                "filter_hint": f"Use theme_code='{code}' in bfs_list_tables_by_theme",
-            }
+            ThemeEntry(
+                code=code,
+                name=name,
+                dataset_count=theme_counts.get(code, 0),
+                filter_hint=f"Use theme_code='{code}' in bfs_list_tables_by_theme",
+            )
             for code, name in BFS_THEMES.items()
         ]
 
-        return json.dumps(
-            {
-                "total_datasets": len(all_dbs),
-                "themes": themes,
-                "note": (
-                    "Use bfs_list_tables_by_theme(theme_code='15') for Bildung, "
-                    "bfs_search_tables(query='Lehrpersonen') for keyword search."
-                ),
-            },
-            ensure_ascii=False,
-            indent=2,
+        return ListThemesResult(
+            total_datasets=len(all_dbs),
+            themes=themes,
+            note=(
+                "Use bfs_list_tables_by_theme(theme_code='15') for Bildung, "
+                "bfs_search_tables(query='Lehrpersonen') for keyword search."
+            ),
         )
     except httpx.HTTPStatusError as e:
-        return _format_error(
-            f"API-Fehler {e.response.status_code}",
-            "BFS STAT-TAB API nicht erreichbar. Bitte später nochmals versuchen.",
+        return ListThemesResult(
+            error=f"API-Fehler {e.response.status_code}",
+            hint="BFS STAT-TAB API nicht erreichbar. Bitte später nochmals versuchen.",
         )
     except Exception:
         _LOGGER.exception("bfs_list_themes failed")
-        return _format_error(
-            "Interner Fehler beim Laden der Themen.",
-            "Bitte erneut versuchen.",
+        return ListThemesResult(
+            error="Interner Fehler beim Laden der Themen.",
+            hint="Bitte erneut versuchen.",
         )
 
 
@@ -739,7 +879,7 @@ async def bfs_list_themes(params: ListThemesInput) -> str:
     },
 )
 @_logged_tool("bfs_list_tables_by_theme")
-async def bfs_list_tables_by_theme(params: ListTablesByThemeInput) -> str:
+async def bfs_list_tables_by_theme(params: ListTablesByThemeInput) -> ListTablesByThemeResult:
     """List available statistical tables for a specific BFS theme.
 
     Returns table IDs and titles for a given theme code. Use the returned
@@ -752,7 +892,8 @@ async def bfs_list_tables_by_theme(params: ListTablesByThemeInput) -> str:
             - limit (int): Max tables to return (default 20)
 
     Returns:
-        str: JSON with list of {table_id, title, last_updated} for the theme.
+        ListTablesByThemeResult with the matching `tables` list. On error,
+        `error` and `hint` are set and `tables` is None.
     """
     try:
         url = f"{BFS_API_BASE}/{params.lang}/"
@@ -766,9 +907,9 @@ async def bfs_list_tables_by_theme(params: ListTablesByThemeInput) -> str:
 
         if not theme_dbs:
             available = list(BFS_THEMES.keys())
-            return _format_error(
-                f"Kein Thema mit Code '{params.theme_code}' gefunden.",
-                f"Verfügbare Codes: {available}. Verwende bfs_list_themes für die vollständige Liste.",
+            return ListTablesByThemeResult(
+                error=f"Kein Thema mit Code '{params.theme_code}' gefunden.",
+                hint=f"Verfügbare Codes: {available}. Verwende bfs_list_themes für die vollständige Liste.",
             )
 
         theme_name = BFS_THEMES.get(params.theme_code, params.theme_code)
@@ -779,47 +920,43 @@ async def bfs_list_tables_by_theme(params: ListTablesByThemeInput) -> str:
         sem = asyncio.Semaphore(FANOUT_CONCURRENCY)
         selected = [db["dbid"] for db in theme_dbs[: params.limit]]
 
-        async def fetch_one(dbid: str) -> dict[str, Any]:
+        async def fetch_one(dbid: str) -> TableEntry:
             async with sem:
                 try:
                     meta = await _fetch_metadata_cached(dbid, params.lang)
-                    return {
-                        "table_id": dbid,
-                        "title": meta.get("title", dbid),
-                        "last_updated": meta.get("updated", ""),
-                        "n_variables": len(meta.get("variables", [])),
-                        "featured": dbid in FEATURED_TABLES,
-                    }
+                    return TableEntry(
+                        table_id=dbid,
+                        title=meta.get("title", dbid),
+                        last_updated=meta.get("updated", ""),
+                        n_variables=len(meta.get("variables", [])),
+                        featured=dbid in FEATURED_TABLES,
+                    )
                 except Exception:
                     _LOGGER.warning(
                         "table metadata fetch failed for %s", dbid, exc_info=True
                     )
-                    return {"table_id": dbid, "title": dbid}
+                    return TableEntry(table_id=dbid, title=dbid)
 
         tables = await asyncio.gather(*(fetch_one(dbid) for dbid in selected))
 
-        return json.dumps(
-            {
-                "theme_code": params.theme_code,
-                "theme_name": theme_name,
-                "total_in_theme": len(theme_dbs),
-                "returned": len(tables),
-                "tables": tables,
-                "next_step": (
-                    "Verwende bfs_get_table_metadata(table_id='...') "
-                    "um Variablen und Filter-Werte zu sehen."
-                ),
-            },
-            ensure_ascii=False,
-            indent=2,
+        return ListTablesByThemeResult(
+            theme_code=params.theme_code,
+            theme_name=theme_name,
+            total_in_theme=len(theme_dbs),
+            returned=len(tables),
+            tables=list(tables),
+            next_step=(
+                "Verwende bfs_get_table_metadata(table_id='...') "
+                "um Variablen und Filter-Werte zu sehen."
+            ),
         )
     except httpx.HTTPStatusError as e:
-        return _format_error(f"API-Fehler {e.response.status_code}")
+        return ListTablesByThemeResult(error=f"API-Fehler {e.response.status_code}")
     except Exception:
         _LOGGER.exception("bfs_list_tables_by_theme failed")
-        return _format_error(
-            "Interner Fehler beim Laden der Tabellen-Liste.",
-            "Bitte erneut versuchen.",
+        return ListTablesByThemeResult(
+            error="Interner Fehler beim Laden der Tabellen-Liste.",
+            hint="Bitte erneut versuchen.",
         )
 
 
@@ -838,7 +975,7 @@ async def bfs_list_tables_by_theme(params: ListTablesByThemeInput) -> str:
     },
 )
 @_logged_tool("bfs_search_tables")
-async def bfs_search_tables(params: SearchTablesInput) -> str:
+async def bfs_search_tables(params: SearchTablesInput) -> SearchTablesResult:
     """Search for BFS statistical tables by keyword in their titles.
 
     Performs a full-text search across all 682+ BFS table titles.
@@ -855,7 +992,8 @@ async def bfs_search_tables(params: SearchTablesInput) -> str:
             - limit (int): Max results (default 10)
 
     Returns:
-        str: JSON with matching tables including IDs, titles, themes, and update dates.
+        SearchTablesResult with matching tables. On error, `error` and
+        `hint` are set and `results` is None.
     """
     try:
         catalog = await _ensure_catalog(params.lang)
@@ -863,7 +1001,7 @@ async def bfs_search_tables(params: SearchTablesInput) -> str:
         query_lower = params.query.lower()
         query_terms = query_lower.split()
 
-        results = []
+        results: list[SearchResultEntry] = []
         for dbid, title in catalog.items():
             # Filter by theme if specified
             if params.theme_code:
@@ -875,37 +1013,33 @@ async def bfs_search_tables(params: SearchTablesInput) -> str:
             if all(term in title_lower for term in query_terms):
                 theme_code = _theme_code_from_dbid(dbid)
                 results.append(
-                    {
-                        "table_id": dbid,
-                        "title": title,
-                        "theme_code": theme_code,
-                        "theme_name": BFS_THEMES.get(theme_code, theme_code),
-                        "featured": dbid in FEATURED_TABLES,
-                    }
+                    SearchResultEntry(
+                        table_id=dbid,
+                        title=title,
+                        theme_code=theme_code,
+                        theme_name=BFS_THEMES.get(theme_code, theme_code),
+                        featured=dbid in FEATURED_TABLES,
+                    )
                 )
 
         results = results[: params.limit]
 
-        return json.dumps(
-            {
-                "query": params.query,
-                "total_matches": len(results),
-                "results": results,
-                "next_step": (
-                    "Verwende bfs_get_table_metadata(table_id='...') "
-                    "um die Variablen einer Tabelle zu sehen."
-                ),
-            },
-            ensure_ascii=False,
-            indent=2,
+        return SearchTablesResult(
+            query=params.query,
+            total_matches=len(results),
+            results=results,
+            next_step=(
+                "Verwende bfs_get_table_metadata(table_id='...') "
+                "um die Variablen einer Tabelle zu sehen."
+            ),
         )
     except httpx.HTTPStatusError as e:
-        return _format_error(f"API-Fehler {e.response.status_code}")
+        return SearchTablesResult(error=f"API-Fehler {e.response.status_code}")
     except Exception:
         _LOGGER.exception("bfs_search_tables failed")
-        return _format_error(
-            "Interner Fehler beim Aufbau des Katalogs.",
-            "Bitte erneut versuchen.",
+        return SearchTablesResult(
+            error="Interner Fehler beim Aufbau des Katalogs.",
+            hint="Bitte erneut versuchen.",
         )
 
 
@@ -924,7 +1058,7 @@ async def bfs_search_tables(params: SearchTablesInput) -> str:
     },
 )
 @_logged_tool("bfs_get_table_metadata")
-async def bfs_get_table_metadata(params: GetTableMetadataInput) -> str:
+async def bfs_get_table_metadata(params: GetTableMetadataInput) -> TableMetadataResult:
     """Get metadata for a BFS table: title, variables, and available filter values.
 
     Essential step before calling bfs_get_data. Returns all dimension variables
@@ -955,60 +1089,63 @@ async def bfs_get_table_metadata(params: GetTableMetadataInput) -> str:
     try:
         meta = await _fetch_metadata_cached(params.table_id, params.lang)
 
-        variables = []
+        variables: list[VariableInfo] = []
         for var in meta.get("variables", []):
-            values = [
-                {"code": code, "label": label}
+            value_pairs = [
+                VariableValue(code=code, label=label)
                 for code, label in zip(
                     var.get("values", []),
                     var.get("valueTexts", var.get("values", [])),
                 )
             ]
             variables.append(
-                {
-                    "code": var.get("code", ""),
-                    "label": var.get("text", ""),
-                    "n_values": len(values),
-                    "values": values[:30],  # show first 30 to keep response manageable
-                    "more_values": max(0, len(values) - 30),
-                }
+                VariableInfo(
+                    code=var.get("code", ""),
+                    label=var.get("text", ""),
+                    n_values=len(value_pairs),
+                    values=value_pairs[:30],  # cap displayed values
+                    more_values=max(0, len(value_pairs) - 30),
+                )
             )
 
         theme_code = _theme_code_from_dbid(params.table_id)
 
-        return json.dumps(
-            {
-                "table_id": params.table_id,
-                "title": meta.get("title", ""),
-                "source": meta.get("source", "BFS"),
-                "last_updated": meta.get("updated", ""),
-                "theme_code": theme_code,
-                "theme_name": BFS_THEMES.get(theme_code, ""),
-                "language": params.lang,
-                "n_variables": len(variables),
-                "variables": variables,
-                "usage_hint": (
-                    "Verwende 'code' der Variable und 'code' der gewünschten Werte "
-                    "als Filter in bfs_get_data. Beispiel: "
-                    f"filters=[{{\"code\": \"{variables[0]['code'] if variables else 'Variable'}\", "
-                    f"\"values\": [\"{variables[0]['values'][0]['code'] if variables and variables[0]['values'] else '0'}\"]}}]"
-                ),
-            },
-            ensure_ascii=False,
-            indent=2,
+        first_var_code = variables[0].code if variables else "Variable"
+        first_val_code = (
+            variables[0].values[0].code
+            if variables and variables[0].values
+            else "0"
+        )
+
+        return TableMetadataResult(
+            table_id=params.table_id,
+            title=meta.get("title", ""),
+            source=meta.get("source", "BFS"),
+            last_updated=meta.get("updated", ""),
+            theme_code=theme_code,
+            theme_name=BFS_THEMES.get(theme_code, ""),
+            language=params.lang,
+            n_variables=len(variables),
+            variables=variables,
+            usage_hint=(
+                "Verwende 'code' der Variable und 'code' der gewünschten Werte "
+                "als Filter in bfs_get_data. Beispiel: "
+                f"filters=[{{\"code\": \"{first_var_code}\", "
+                f"\"values\": [\"{first_val_code}\"]}}]"
+            ),
         )
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
-            return _format_error(
-                f"Tabelle '{params.table_id}' nicht gefunden.",
-                "Verwende bfs_search_tables oder bfs_list_tables_by_theme um gültige IDs zu finden.",
+            return TableMetadataResult(
+                error=f"Tabelle '{params.table_id}' nicht gefunden.",
+                hint="Verwende bfs_search_tables oder bfs_list_tables_by_theme um gültige IDs zu finden.",
             )
-        return _format_error(f"API-Fehler {e.response.status_code}")
+        return TableMetadataResult(error=f"API-Fehler {e.response.status_code}")
     except Exception:
         _LOGGER.exception("bfs_get_table_metadata failed")
-        return _format_error(
-            "Interner Fehler beim Laden der Metadaten.",
-            "Bitte erneut versuchen.",
+        return TableMetadataResult(
+            error="Interner Fehler beim Laden der Metadaten.",
+            hint="Bitte erneut versuchen.",
         )
 
 
@@ -1027,7 +1164,7 @@ async def bfs_get_table_metadata(params: GetTableMetadataInput) -> str:
     },
 )
 @_logged_tool("bfs_get_data")
-async def bfs_get_data(params: GetDataInput) -> str:
+async def bfs_get_data(params: GetDataInput) -> DataTableResult:
     """Query statistical data from a BFS table with optional filters.
 
     Fetches actual data values from a STAT-TAB table. Always call
@@ -1043,13 +1180,9 @@ async def bfs_get_data(params: GetDataInput) -> str:
             - max_rows (int): Safety limit on returned rows (default 500)
 
     Returns:
-        str: JSON with table title, dimension info, and data rows.
-             Each row contains one value per dimension combination.
-
-    Example:
-        bfs_get_data(table_id='px-x-1504000000_173',
-                     filters=[{"code": "Kanton", "values": ["1"]},
-                              {"code": "Schuljahr", "values": ["13"]}])
+        DataTableResult with `dimensions`, `rows`, plus `truncated`,
+        `rows_total`, `rows_returned` for machine-readable capping.
+        On error, `error` and `hint` are set.
     """
     try:
         url = _build_data_url(params.table_id, params.lang)
@@ -1068,37 +1201,44 @@ async def bfs_get_data(params: GetDataInput) -> str:
         body = {"query": query, "response": {"format": "json-stat2"}}
         data = await _post(url, body)
 
-        result = _format_jsonstat2_as_table(data, max_rows=params.max_rows)
-
-        if result["total_rows"] > params.max_rows:
-            result["warning"] = (
+        formatted = _format_jsonstat2_as_table(data, max_rows=params.max_rows)
+        note = None
+        if formatted["truncated"]:
+            note = (
                 f"Datenmenge auf {params.max_rows} Zeilen begrenzt "
-                f"(total: {result['total_rows']}). "
+                f"(total: {formatted['rows_total']}). "
                 "Verwende Filter um die Datenmenge einzuschränken."
             )
 
-        return json.dumps(result, ensure_ascii=False, indent=2)
+        return DataTableResult(
+            table_id=params.table_id,
+            language=params.lang,
+            note=note,
+            **formatted,
+        )
 
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
-            return _format_error(
-                f"Tabelle '{params.table_id}' nicht gefunden.",
-                "Prüfe die table_id mit bfs_search_tables.",
+            return DataTableResult(
+                error=f"Tabelle '{params.table_id}' nicht gefunden.",
+                hint="Prüfe die table_id mit bfs_search_tables.",
             )
         if e.response.status_code == 400:
-            return _format_error(
-                "Ungültige Abfrage (HTTP 400).",
-                (
+            return DataTableResult(
+                error="Ungültige Abfrage (HTTP 400).",
+                hint=(
                     "Prüfe ob die Filter-Codes und -Werte korrekt sind. "
                     "Verwende bfs_get_table_metadata um gültige Codes zu erhalten."
                 ),
             )
-        return _format_error(f"API-Fehler {e.response.status_code}: {e.response.text[:200]}")
+        return DataTableResult(
+            error=f"API-Fehler {e.response.status_code}: {e.response.text[:200]}"
+        )
     except Exception:
         _LOGGER.exception("bfs_get_data failed")
-        return _format_error(
-            "Interner Fehler beim Daten-Abruf.",
-            "Bitte mit kleinerer Datenmenge oder anderen Filtern erneut versuchen.",
+        return DataTableResult(
+            error="Interner Fehler beim Daten-Abruf.",
+            hint="Bitte mit kleinerer Datenmenge oder anderen Filtern erneut versuchen.",
         )
 
 
@@ -1206,7 +1346,7 @@ CANTON_POPULATION_CODE: dict[str, str] = {
     },
 )
 @_logged_tool("bfs_education_stats")
-async def bfs_education_stats(params: GetEducationStatsInput) -> str:
+async def bfs_education_stats(params: GetEducationStatsInput) -> DataTableResult:
     """Retrieve Swiss education statistics — convenience tool for Schulamt context.
 
     Provides direct access to key education datasets without needing to know
@@ -1220,8 +1360,9 @@ async def bfs_education_stats(params: GetEducationStatsInput) -> str:
             - lang (str): Language code
 
     Returns:
-        str: JSON with education statistics for the selected topic and canton.
-             Includes table metadata and data rows.
+        DataTableResult with `topic`, `topic_description`, `canton_filter`
+        on success, plus the data table fields. On error, `error` and
+        `hint` are set.
     """
     topic_cfg = EDUCATION_TOPIC_MAP[params.topic]
     table_id: str = topic_cfg["table_id"]
@@ -1238,9 +1379,9 @@ async def bfs_education_stats(params: GetEducationStatsInput) -> str:
                     canton_value = val
                     break
         if canton_value is None:
-            return _format_error(
-                f"Kanton '{params.canton}' nicht gefunden.",
-                f"Gültige Kantone: {list(CANTON_NAME_TO_VALUE.keys())}",
+            return DataTableResult(
+                error=f"Kanton '{params.canton}' nicht gefunden.",
+                hint=f"Gültige Kantone: {list(CANTON_NAME_TO_VALUE.keys())}",
             )
 
     try:
@@ -1258,25 +1399,27 @@ async def bfs_education_stats(params: GetEducationStatsInput) -> str:
         body = {"query": query, "response": {"format": "json-stat2"}}
         data = await _post(url, body)
 
-        result = _format_jsonstat2_as_table(data, max_rows=500)
-        result["topic"] = params.topic
-        result["topic_description"] = topic_cfg["description"]
-        result["table_id"] = table_id
-        if params.canton:
-            result["canton_filter"] = params.canton
+        formatted = _format_jsonstat2_as_table(data, max_rows=500)
 
-        return json.dumps(result, ensure_ascii=False, indent=2)
+        return DataTableResult(
+            table_id=table_id,
+            topic=params.topic,
+            topic_description=topic_cfg["description"],
+            canton_filter=params.canton,
+            language=params.lang,
+            **formatted,
+        )
 
     except httpx.HTTPStatusError as e:
-        return _format_error(
-            f"API-Fehler {e.response.status_code}",
-            "Tabelle möglicherweise aktuell nicht verfügbar. Bitte später nochmals versuchen.",
+        return DataTableResult(
+            error=f"API-Fehler {e.response.status_code}",
+            hint="Tabelle möglicherweise aktuell nicht verfügbar. Bitte später nochmals versuchen.",
         )
     except Exception:
         _LOGGER.exception("bfs_education_stats failed")
-        return _format_error(
-            "Interner Fehler beim Abruf der Bildungsstatistiken.",
-            "Bitte erneut versuchen.",
+        return DataTableResult(
+            error="Interner Fehler beim Abruf der Bildungsstatistiken.",
+            hint="Bitte erneut versuchen.",
         )
 
 
@@ -1295,7 +1438,7 @@ async def bfs_education_stats(params: GetEducationStatsInput) -> str:
     },
 )
 @_logged_tool("bfs_population")
-async def bfs_population(params: GetPopulationInput) -> str:
+async def bfs_population(params: GetPopulationInput) -> DataTableResult:
     """Retrieve Swiss population statistics by region, year, and breakdown.
 
     Accesses the core BFS population dataset (ständige Wohnbevölkerung)
@@ -1322,9 +1465,9 @@ async def bfs_population(params: GetPopulationInput) -> str:
                 break
 
     if region_value is None:
-        return _format_error(
-            f"Region '{params.region}' nicht gefunden.",
-            "Verwende 'Schweiz' oder einen Kantonnamen wie 'Zürich', 'Bern / Berne'.",
+        return DataTableResult(
+            error=f"Region '{params.region}' nicht gefunden.",
+            hint="Verwende 'Schweiz' oder einen Kantonnamen wie 'Zürich', 'Bern / Berne'.",
         )
 
     canton_code = region_value
@@ -1384,24 +1527,28 @@ async def bfs_population(params: GetPopulationInput) -> str:
         body = {"query": query, "response": {"format": "json-stat2"}}
         data = await _post(url, body)
 
-        result = _format_jsonstat2_as_table(data, max_rows=200)
-        result["region"] = params.region
-        result["breakdown"] = params.breakdown
-        result["table_id"] = TABLE_ID
-        result["note"] = (
-            "Ständige Wohnbevölkerung. "
-            "Für Schulraumplanung empfiehlt sich breakdown='age' für Altersgruppen 0-18."
+        formatted = _format_jsonstat2_as_table(data, max_rows=200)
+
+        return DataTableResult(
+            table_id=TABLE_ID,
+            region=params.region,
+            breakdown=params.breakdown,
+            year=params.year,
+            language="de",
+            note=(
+                "Ständige Wohnbevölkerung. "
+                "Für Schulraumplanung empfiehlt sich breakdown='age' für Altersgruppen 0-18."
+            ),
+            **formatted,
         )
 
-        return json.dumps(result, ensure_ascii=False, indent=2)
-
     except httpx.HTTPStatusError as e:
-        return _format_error(f"API-Fehler {e.response.status_code}")
+        return DataTableResult(error=f"API-Fehler {e.response.status_code}")
     except Exception:
         _LOGGER.exception("bfs_population failed")
-        return _format_error(
-            "Interner Fehler beim Abruf der Bevölkerungsdaten.",
-            "Bitte erneut versuchen.",
+        return DataTableResult(
+            error="Interner Fehler beim Abruf der Bevölkerungsdaten.",
+            hint="Bitte erneut versuchen.",
         )
 
 
@@ -1420,7 +1567,7 @@ async def bfs_population(params: GetPopulationInput) -> str:
     },
 )
 @_logged_tool("bfs_compare_cantons")
-async def bfs_compare_cantons(params: CompareCantonsInput) -> str:
+async def bfs_compare_cantons(params: CompareCantonsInput) -> DataTableResult:
     """Compare a BFS statistical indicator across multiple Swiss cantons.
 
     Designed for KI-Fachgruppe demos and benchmarking. Fetches the same
@@ -1460,9 +1607,9 @@ async def bfs_compare_cantons(params: CompareCantonsInput) -> str:
                 break
 
         if canton_var_code is None:
-            return _format_error(
-                "Keine Kanton-Variable in dieser Tabelle gefunden.",
-                f"Verfügbare Variablen: {[v['code'] for v in meta.get('variables', [])]}",
+            return DataTableResult(
+                error="Keine Kanton-Variable in dieser Tabelle gefunden.",
+                hint=f"Verfügbare Variablen: {[v['code'] for v in meta.get('variables', [])]}",
             )
 
         query.append(
@@ -1484,25 +1631,28 @@ async def bfs_compare_cantons(params: CompareCantonsInput) -> str:
         body = {"query": query, "response": {"format": "json-stat2"}}
         data = await _post(url, body)
 
-        result = _format_jsonstat2_as_table(data, max_rows=500)
-        result["table_id"] = params.table_id
-        result["cantons_compared"] = params.canton_values
-        result["canton_variable"] = canton_var_code
+        formatted = _format_jsonstat2_as_table(data, max_rows=500)
 
-        return json.dumps(result, ensure_ascii=False, indent=2)
+        return DataTableResult(
+            table_id=params.table_id,
+            language=params.lang,
+            cantons_compared=params.canton_values,
+            canton_variable=canton_var_code,
+            **formatted,
+        )
 
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 400:
-            return _format_error(
-                "Ungültige Anfrage. Prüfe ob die Kanton-Werte für diese Tabelle gültig sind.",
-                "Verwende bfs_get_table_metadata um gültige Werte-Codes zu erhalten.",
+            return DataTableResult(
+                error="Ungültige Anfrage. Prüfe ob die Kanton-Werte für diese Tabelle gültig sind.",
+                hint="Verwende bfs_get_table_metadata um gültige Werte-Codes zu erhalten.",
             )
-        return _format_error(f"API-Fehler {e.response.status_code}")
+        return DataTableResult(error=f"API-Fehler {e.response.status_code}")
     except Exception:
         _LOGGER.exception("bfs_compare_cantons failed")
-        return _format_error(
-            "Interner Fehler beim Kantons-Vergleich.",
-            "Bitte erneut versuchen.",
+        return DataTableResult(
+            error="Interner Fehler beim Kantons-Vergleich.",
+            hint="Bitte erneut versuchen.",
         )
 
 
@@ -1521,7 +1671,7 @@ async def bfs_compare_cantons(params: CompareCantonsInput) -> str:
     },
 )
 @_logged_tool("bfs_featured_datasets")
-async def bfs_featured_datasets(params: ListThemesInput) -> str:
+async def bfs_featured_datasets(params: ListThemesInput) -> FeaturedDatasetsResult:
     """Return a curated list of high-value BFS datasets for Schulamt and public administration.
 
     Provides a shortlist of the most relevant datasets for education planning,
@@ -1532,32 +1682,29 @@ async def bfs_featured_datasets(params: ListThemesInput) -> str:
             - lang (str): Language code
 
     Returns:
-        str: JSON with curated table IDs, titles, themes, and recommended use cases.
+        FeaturedDatasetsResult with curated table IDs, titles, themes, and
+        recommended use cases.
     """
     featured = [
-        {
-            "table_id": tid,
-            "title": FEATURED_TABLES[tid],
-            "theme_code": _theme_code_from_dbid(tid),
-            "theme_name": BFS_THEMES.get(_theme_code_from_dbid(tid), ""),
-            "schulamt_relevanz": _schulamt_relevance(tid),
-        }
+        FeaturedDatasetEntry(
+            table_id=tid,
+            title=FEATURED_TABLES[tid],
+            theme_code=_theme_code_from_dbid(tid),
+            theme_name=BFS_THEMES.get(_theme_code_from_dbid(tid), ""),
+            schulamt_relevanz=_schulamt_relevance(tid),
+        )
         for tid in FEATURED_TABLES
     ]
 
-    return json.dumps(
-        {
-            "total": len(featured),
-            "featured_datasets": featured,
-            "quick_start": (
-                "Verwende bfs_education_stats(topic='teachers') für Lehrkräfte-Statistiken, "
-                "bfs_population(region='Zürich', breakdown='age') für Altersstruktur in Zürich, "
-                "oder bfs_get_table_metadata(table_id='px-x-1504000000_173') "
-                "für detaillierte Lehrkräfte-Daten."
-            ),
-        },
-        ensure_ascii=False,
-        indent=2,
+    return FeaturedDatasetsResult(
+        total=len(featured),
+        featured_datasets=featured,
+        quick_start=(
+            "Verwende bfs_education_stats(topic='teachers') für Lehrkräfte-Statistiken, "
+            "bfs_population(region='Zürich', breakdown='age') für Altersstruktur in Zürich, "
+            "oder bfs_get_table_metadata(table_id='px-x-1504000000_173') "
+            "für detaillierte Lehrkräfte-Daten."
+        ),
     )
 
 
