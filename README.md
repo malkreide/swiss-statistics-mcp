@@ -305,7 +305,10 @@ swiss-statistics-mcp/
 ├── .github/workflows/ci.yml     # GitHub Actions (Python 3.11/3.12/3.13)
 ├── pyproject.toml
 ├── CHANGELOG.md
-├── CONTRIBUTING.md
+├── CONTRIBUTING.md              # English
+├── CONTRIBUTING.de.md           # German version
+├── SECURITY.md                  # English
+├── SECURITY.de.md               # German version
 ├── LICENSE
 ├── README.md                    # This file (English)
 └── README.de.md                 # German version
@@ -396,6 +399,14 @@ See [CHANGELOG.md](CHANGELOG.md)
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md)
+
+---
+
+## Security
+
+Read-only, no PII, no authentication, single fixed BFS endpoint. See
+[SECURITY.md](SECURITY.md) for the full security posture and accepted-risk
+decisions.
 
 ---
 
