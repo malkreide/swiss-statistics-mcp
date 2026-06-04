@@ -306,7 +306,10 @@ swiss-statistics-mcp/
 ├── .github/workflows/ci.yml     # GitHub Actions (Python 3.11/3.12/3.13)
 ├── pyproject.toml
 ├── CHANGELOG.md
-├── CONTRIBUTING.md
+├── CONTRIBUTING.md              # Englisch
+├── CONTRIBUTING.de.md           # Deutsche Version
+├── SECURITY.md                  # Englisch
+├── SECURITY.de.md               # Deutsche Version
 ├── LICENSE
 ├── README.md                    # Englische Hauptversion
 └── README.de.md                 # Diese Datei (Deutsch)
@@ -396,7 +399,15 @@ Siehe [CHANGELOG.md](CHANGELOG.md)
 
 ## Mitwirken
 
-Siehe [CONTRIBUTING.md](CONTRIBUTING.md)
+Siehe [CONTRIBUTING.de.md](CONTRIBUTING.de.md)
+
+---
+
+## Sicherheit
+
+Rein lesend, keine Personendaten, keine Authentifizierung, ein einziger fixer
+BFS-Endpunkt. Die vollständige Sicherheitslage und die akzeptierten Risiken sind
+in [SECURITY.de.md](SECURITY.de.md) dokumentiert.
 
 ---
 
