@@ -48,6 +48,7 @@ dev = [
 swiss-statistics-mcp = "swiss_statistics_mcp.server:mcp.run"
 
 [project.urls]
+"mcp-name" = "io.github.malkreide/swiss-statistics-mcp"
 Homepage   = "https://github.com/malkreide/swiss-statistics-mcp"
 Repository = "https://github.com/malkreide/swiss-statistics-mcp"
 Issues     = "https://github.com/malkreide/swiss-statistics-mcp/issues"
