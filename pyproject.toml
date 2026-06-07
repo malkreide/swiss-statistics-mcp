@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name        = "swiss-statistics-mcp"
-version     = "0.2.2"
+version     = "0.2.3"
 description = "MCP Server for Swiss Federal Statistical Office (BFS) data via STAT-TAB PxWeb API"
 readme      = "README.md"
 license     = { file = "LICENSE" }
