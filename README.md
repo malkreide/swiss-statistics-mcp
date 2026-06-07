@@ -433,3 +433,5 @@ Hayal Oezkan · [malkreide](https://github.com/malkreide)
 - **Related:** [swiss-transport-mcp](https://github.com/malkreide/swiss-transport-mcp) — OJP journey planning, SIRI-SX disruptions
 - **Related:** [global-education-mcp](https://github.com/malkreide/global-education-mcp) — UNESCO UIS and OECD Education at a Glance
 - **Portfolio:** [Swiss Public Data MCP Portfolio](https://github.com/malkreide)
+
+<!-- mcp-name: io.github.malkreide/swiss-statistics-mcp -->
