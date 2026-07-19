@@ -2,7 +2,7 @@
 
 # 📊 swiss-statistics-mcp
 
-![Version](https://img.shields.io/badge/version-0.2.0-blue)
+![Version](https://img.shields.io/badge/version-0.3.0-blue)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-purple)](https://modelcontextprotocol.io/)
@@ -53,7 +53,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for breaking changes.
 
 ## Features
 
-- 📊 **9 tools** across 21 statistical themes (682 datasets)
+- 📊 **13 tools**: 9 across 21 statistical themes (682 datasets) + a 4-tool commune/historical **reference layer**
 - 🔍 **Full-text search** across the entire BFS data catalogue
 - 🎓 **Convenience tools** for education statistics and population data
 - 🏔️ **Cross-cantonal comparison** for any table and variable
@@ -221,6 +221,12 @@ detection.
 | `bfs_population` | `DataTableResult` |
 | `bfs_compare_cantons` | `DataTableResult` |
 | `bfs_featured_datasets` | `FeaturedDatasetsResult` |
+| `lookup_commune` | `LookupCommuneResult` |
+| `resolve_historical_commune` | `ResolveHistoricalCommuneResult` |
+| `list_communes` | `ListCommunesResult` |
+| `search_historical_series` | `SearchHistoricalSeriesResult` |
+
+Reference-layer results additionally carry `source` (attribution) and `provenance` (`live_api` \| `cached`); `SearchHistoricalSeriesResult` also carries `licence_note` with the mandatory HSSO NonCommercial notice.
 
 ---
 
@@ -237,6 +243,12 @@ detection.
 | `bfs_education_stats` | Convenience tool: teachers, pupils, demographic scenarios, scholarships |
 | `bfs_population` | Resident population by canton, year, age structure or sex |
 | `bfs_compare_cantons` | Cross-cantonal comparison for any table and any variable |
+| `lookup_commune` | Resolve a commune by name or BFS number as of a given date (canton, validity, LINDAS URI) |
+| `resolve_historical_commune` | Map a historical BFS number onto today's number(s) — re-key old statistics across fusions |
+| `list_communes` | List all communes of a canton as of a given date |
+| `search_historical_series` | Search long-run time series in Historical Statistics of Switzerland (HSSO) |
+
+The last four tools form the **reference layer** of the portfolio (see [Join Keys](#join-keys)): they turn official BFS commune numbers into a reliable join key and let you re-key statistics that predate a municipal merger.
 
 ### Example Use Cases
 
@@ -247,6 +259,9 @@ detection.
 | *"What is the population of canton Zurich by age?"* | `bfs_population` |
 | *"Compare the social assistance rate across all cantons"* | `bfs_compare_cantons` |
 | *"Is there data on school buildings?"* | `bfs_search_tables` |
+| *"Which Zurich communes have merged since 2000, and onto which of today's BFS numbers must I re-key old statistics?"* | `resolve_historical_commune` |
+| *"List all communes of canton Glarus today"* | `list_communes` |
+| *"Find long-run series on population in HSSO"* | `search_historical_series` |
 
 [→ More use cases by audience →](EXAMPLES.md)
 
@@ -277,8 +292,8 @@ detection.
 │   Claude / AI   │────▶│  Swiss Statistics MCP          │────▶│  BFS STAT-TAB            │
 │   (MCP Host)    │◀────│  (MCP Server)                │◀────│  PxWeb API v1            │
 └─────────────────┘     │                              │     └──────────────────────────┘
-                        │  9 Tools                     │
-                        │  682 datasets · 21 themes    │
+                        │  13 Tools                    │
+                        │  + commune & historical ref  │
                         │  Stdio | Streamable HTTP     │
                         │                              │
                         │  No authentication required  │
@@ -287,9 +302,32 @@ detection.
 
 ### Data Source Characteristics
 
-| Source | Protocol | Coverage | Auth |
-|--------|----------|----------|------|
-| BFS STAT-TAB | PxWeb REST API | 682 tables, 21 themes | None |
+| Source | Protocol | Coverage | Auth | Licence |
+|--------|----------|----------|------|---------|
+| BFS STAT-TAB | PxWeb REST API | 682 tables, 21 themes | None | OGD |
+| BFS AGVCH (commune register) | REST (CSV/XLSX) | Snapshots, mutations, correspondances | None | OGD |
+| HSSO (historical statistics) | Static XLSX dumps | ~750 long-run tables | None | CC BY-NC-SA 3.0 |
+
+### Architecture decision
+
+- **AGVCH commune register → Architecture A (live-API-only).** The [official REST service](https://www.agvchapp.bfs.admin.ch/de/home) (`snapshot` / `correspondances` / `mutations` / `levels`) is a clean, versioned, no-auth API — verified live on 2026-07-19 — so the commune tools query it directly with a 24 h in-memory cache and the shared retry policy. No dump fallback is needed. **Finding:** the live snapshot CSV header uses `Inscription,Radiation,Rec_Type_fr` (not the `Einschreibung,Streichung` names printed in the API PDF), and `HistoricalCode` is **not** globally unique across levels — the `Parent` link is disambiguated by tier when deriving a commune's canton.
+- **HSSO → Architecture C (dump-only).** HSSO offers no API, only static per-table XLSX at stable URLs (`/get/{CHAPTER}.{NN}{suffix}.xlsx`). `search_historical_series` builds a cached title index from the chapter pages and returns the stable download URL. HSSO is licensed **CC BY-NC-SA 3.0 (NonCommercial)** — different from this server's OGD baseline — so every HSSO response carries an explicit NonCommercial notice in `licence_note`.
+
+---
+
+## Join Keys
+
+The reference layer exists so that data from different servers in the [Swiss Public Data MCP Portfolio](https://github.com/malkreide) can be joined reliably. Three identifiers are the portfolio-wide keys:
+
+| Key | What it identifies | Canonical form | Notes |
+|-----|--------------------|----------------|-------|
+| **BFS commune number** (`BfsCode`) | A political commune | integer, e.g. `261` (Zürich) | The primary join key across statistics, geo, education and health data. Stable LINDAS/Linked-Data URI: `https://ld.admin.ch/municipality/{BfsCode}`. **Not stable over time** — a merger issues a new number, so historical data must be re-keyed via `resolve_historical_commune`. |
+| **EGID** | A single building (Eidg. Gebäudeidentifikator) | 9-digit integer | The join key for building/dwelling-level data (GWR, energy, addresses). A commune contains many EGIDs; `BfsCode` is the commune each EGID sits in. |
+| **Canton abbreviation** | A canton | two letters, e.g. `ZH` | The coarsest geographic key. Derivable from any commune via its `Parent` chain (exposed as `canton_abbr`). |
+
+**Why re-keying matters.** BFS commune numbers change whenever communes merge, split, or move canton. Statistics published before a merger use the old number; joining them to today's data without re-keying silently drops or misattributes rows. `resolve_historical_commune(bfs_number, from_date, to_date)` returns the `resolves_to` set — the current number(s) old figures must be aggregated onto — plus the `mutation_path` (the fusions/renamings, with dates). Other portfolio servers are meant to mirror this contract conceptually so the same key resolves the same way everywhere.
+
+**Example (anchor query).** *"Which Zurich communes have merged since 2000?"* — e.g. old `132 Hirzel` and `133 Horgen` both re-key onto today's `295 Horgen`; `134/140/142` onto `293 Wädenswil`.
 
 ---
 
@@ -299,7 +337,7 @@ detection.
 swiss-statistics-mcp/
 ├── src/swiss_statistics_mcp/
 │   ├── __init__.py              # Package
-│   └── server.py                # 9 tools
+│   └── server.py                # 13 tools
 ├── tests/
 │   └── test_server.py           # Unit + integration tests (mocked HTTP)
 ├── .github/workflows/ci.yml     # GitHub Actions (Python 3.11/3.12/3.13)
@@ -364,6 +402,8 @@ The server absorbs transient BFS-API hiccups before they reach the LLM:
 - **PxWeb API:** Rate limiting may apply for rapid successive queries; the server uses a 1-hour cache for the catalogue index and a 1-hour cache for table metadata
 - **Language:** Dataset titles and dimension values are in German by default; French, Italian and English coverage varies by table
 - **JSON-STAT2:** Some complex cross-tabulations may return large result sets; use dimension filters to narrow queries
+- **Commune register (AGVCH):** Live snapshot CSV headers use `Inscription/Radiation/Rec_Type_fr` (not the `Einschreibung/Streichung` names in the API PDF); `HistoricalCode` is not globally unique across levels, so the canton is derived by walking the `Parent` chain one tier at a time. Snapshots/mutations are cached for 24 h.
+- **HSSO:** Licensed **CC BY-NC-SA 3.0 (NonCommercial)** — attribution required, no commercial use; every response carries this in `licence_note`. HSSO exposes no per-table period filter, so `search_historical_series`'s `period` argument is an informational hint only — verify the actual span in the XLSX. `search_historical_series` returns the stable XLSX download URL, not the parsed series values.
 
 ---
 

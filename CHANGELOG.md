@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-19
+
+### Added
+- **Reference layer** — four new tools that make the official BFS commune
+  number the portfolio-wide join key:
+    - `lookup_commune(name_or_bfs_number, valid_at_date)` → `LookupCommuneResult`
+    - `resolve_historical_commune(bfs_number, from_date, to_date)` →
+      `ResolveHistoricalCommuneResult` — maps a historical BFS number onto
+      today's number(s) with the mutation path, for re-keying old statistics
+      across fusions.
+    - `list_communes(canton, valid_at_date)` → `ListCommunesResult`
+    - `search_historical_series(topic, period)` → `SearchHistoricalSeriesResult`
+- Two new upstream sources:
+    - **BFS AGVCH commune register** via its REST service
+      (`snapshot` / `correspondances` / `mutations`) — Architecture A
+      (live-API-only) with a 24 h cache; reuses the shared retry policy.
+    - **Historical Statistics of Switzerland (HSSO)** — Architecture C
+      (dump-only); `search_historical_series` returns the stable XLSX URL.
+- Reference-layer responses carry `source` + `provenance` (`live_api` |
+  `cached`); HSSO responses additionally carry `licence_note` with the
+  mandatory CC BY-NC-SA 3.0 NonCommercial notice.
+- README **Join Keys** section documenting BFS commune number, EGID and
+  canton abbreviation as portfolio-wide keys, plus an Architecture decision
+  note and the fusion re-keying anchor query.
+
+### Known findings
+- The live AGVCH `snapshot` CSV header uses `Inscription,Radiation,Rec_Type_fr`,
+  **not** the `Einschreibung,Streichung` names printed in `rest_api_de.pdf` —
+  parse against the live header, not the doc.
+- `HistoricalCode` is **not globally unique** across levels in a snapshot
+  (e.g. `10078` is both ZH's *Bezirk Horgen* and VS's commune *Vionnaz*), so a
+  commune's `Parent` link is disambiguated by tier when deriving its canton. A
+  naive dict keyed on `HistoricalCode` silently mis-attributes cantons.
+- HSSO exposes no per-table period filter; `search_historical_series`'s
+  `period` argument is an informational hint only.
+
 ## [0.2.0] - 2026-05-20
 
 ### Changed (BREAKING)

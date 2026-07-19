@@ -13,15 +13,21 @@ No authentication required. Open data under BFS usage terms.
 from __future__ import annotations
 
 import asyncio
+import csv
 import functools
+import html
+import io
 import json
 import logging
 import os
+import re
 import sys
 import time
 import uuid
 from collections.abc import Callable
+from datetime import date
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -61,6 +67,51 @@ BFS_TABLE_ID_PATTERN = r"^px-[a-z]-\d{8,12}_\d{1,4}$"
 RETRY_MAX_ATTEMPTS = int(os.environ.get("MCP_RETRY_MAX_ATTEMPTS", "3"))
 RETRY_WAIT_INITIAL = float(os.environ.get("MCP_RETRY_WAIT_INITIAL", "0.5"))
 RETRY_WAIT_MAX = float(os.environ.get("MCP_RETRY_WAIT_MAX", "4.0"))
+
+# ---------------------------------------------------------------------------
+# Reference layer: Amtliches Gemeindeverzeichnis (BFS AGVCH) + HSSO
+# ---------------------------------------------------------------------------
+#
+# The commune register is the portfolio's REFERENCE LAYER: the BFS commune
+# number is the join key that ties statistics, geo, education and health
+# data together. The AGVCH REST service (rest_api_de.pdf, v2026.06.x) is a
+# clean, versioned, No-Auth API — snapshot / correspondances / mutations —
+# so these tools use Architecture A (live-API-only) with a TTL cache.
+#
+# Historical Statistics of Switzerland (hsso.ch) offers no API, only static
+# per-table XLSX dumps at stable URLs → Architecture C (dump-only). Its
+# licence is CC BY-NC-SA 3.0 (NonCommercial), which differs from the OGD
+# baseline of the rest of this server, so every HSSO response carries an
+# explicit NonCommercial notice.
+
+AGVCH_API_BASE = "https://www.agvchapp.bfs.admin.ch/api/communes"
+HSSO_BASE = "https://hsso.ch"
+LINDAS_MUNICIPALITY_URI = "https://ld.admin.ch/municipality/{bfs}"
+
+AGVCH_ATTRIBUTION = (
+    "Amtliches Gemeindeverzeichnis der Schweiz (BFS) — "
+    "https://www.bfs.admin.ch/bfs/de/home/grundlagen/agvch.html. "
+    "Open Government Data, freie Weiterverwendung."
+)
+HSSO_ATTRIBUTION = (
+    "Historische Statistik der Schweiz (HSSO) — https://hsso.ch. "
+    "Lizenz CC BY-NC-SA 3.0: Namensnennung erforderlich, keine kommerzielle Nutzung."
+)
+HSSO_NONCOMMERCIAL_NOTE = (
+    "⚠️ HSSO-Daten stehen unter CC BY-NC-SA 3.0 (NonCommercial). "
+    "Nur für nicht-kommerzielle Nutzung mit Quellenangabe."
+)
+
+# Commune snapshots change only at year boundaries and mutations are
+# historical (append-only), so a day-long cache is safe and collapses the
+# repeated lookup/list flows to a single fetch per (date) key.
+COMMUNE_CACHE_TTL = int(os.environ.get("MCP_COMMUNE_CACHE_TTL", "86400"))  # 24h
+HSSO_INDEX_TTL = int(os.environ.get("MCP_HSSO_INDEX_TTL", "86400"))  # 24h
+
+# Snapshot Level codes → human labels. (Finding: the live CSV header uses
+# Inscription/Radiation/Rec_Type_fr, NOT the Einschreibung/Streichung names
+# printed in rest_api_de.pdf — parse against the live header, not the doc.)
+_AGVCH_LEVEL_LABELS = {"1": "Kanton", "2": "Bezirk", "3": "Gemeinde"}
 
 
 # ---------------------------------------------------------------------------
@@ -265,6 +316,248 @@ async def _post(url: str, body: dict[str, Any]) -> Any:
             resp.raise_for_status()
             return resp.json()
     return await _retrying_http(_do)
+
+
+async def _get_text(url: str) -> str:
+    """Perform a GET request and return the raw response text, with retry.
+
+    Used for the AGVCH CSV endpoints and HSSO HTML pages, which are not JSON.
+    Shares the same transient-error retry policy as `_get`/`_post`.
+    """
+    async def _do() -> str:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, follow_redirects=True) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            return resp.text
+    return await _retrying_http(_do)
+
+
+# ---------------------------------------------------------------------------
+# AGVCH commune register helpers (Architecture A: live REST + TTL cache)
+# ---------------------------------------------------------------------------
+#
+# The AGVCH REST service speaks DD-MM-YYYY; the tools accept portfolio-native
+# ISO dates (YYYY-MM-DD) and convert at the boundary so every server in the
+# portfolio exposes the same date contract.
+
+_snapshot_cache: dict[str, tuple[float, list[dict[str, str]]]] = {}
+
+
+def _iso_to_agvch(iso_date: str) -> str:
+    """'2025-01-01' → '01-01-2025' (AGVCH's DD-MM-YYYY)."""
+    y, m, d = iso_date.split("-")
+    return f"{d}-{m}-{y}"
+
+
+async def _fetch_agvch_csv(endpoint: str, params: dict[str, str]) -> list[dict[str, str]]:
+    """Fetch an AGVCH CSV endpoint and parse it against its live header."""
+    url = f"{AGVCH_API_BASE}/{endpoint}?{urlencode(params)}"
+    text = await _get_text(url)
+    return list(csv.DictReader(io.StringIO(text)))
+
+
+async def _fetch_snapshot(agvch_date: str) -> tuple[list[dict[str, str]], bool]:
+    """Return (rows, from_cache) for the commune snapshot at a DD-MM-YYYY date.
+
+    A snapshot lists cantons (Level 1), districts (Level 2) and communes
+    (Level 3) with their `Parent` links, so canton membership is derivable
+    from the snapshot alone — no need for the 2.5 MB `levels` endpoint.
+    """
+    now = time.time()
+    hit = _snapshot_cache.get(agvch_date)
+    if hit is not None and (now - hit[0]) < COMMUNE_CACHE_TTL:
+        return hit[1], True
+    rows = await _fetch_agvch_csv("snapshot", {"date": agvch_date, "format": "csv"})
+    _snapshot_cache[agvch_date] = (now, rows)
+    return rows, False
+
+
+def _index_by_hist(rows: list[dict[str, str]]) -> dict[str, list[dict[str, str]]]:
+    """Index snapshot rows by HistoricalCode as a MULTIMAP.
+
+    Finding: HistoricalCode is NOT globally unique in the snapshot — e.g.
+    code 10078 is both ZH's 'Bezirk Horgen' (Level 2) and VS's commune
+    'Vionnaz' (Level 3). A plain dict would silently collapse the two and
+    resolve Parent links to the wrong entity, so the Parent link must be
+    disambiguated by tier (see `_parent_row`).
+    """
+    idx: dict[str, list[dict[str, str]]] = {}
+    for r in rows:
+        h = r.get("HistoricalCode")
+        if h:
+            idx.setdefault(h, []).append(r)
+    return idx
+
+
+def _level_int(row: dict[str, str]) -> int:
+    try:
+        return int(row.get("Level") or 0)
+    except ValueError:
+        return 0
+
+
+def _parent_row(
+    row: dict[str, str], by_hist: dict[str, list[dict[str, str]]]
+) -> dict[str, str] | None:
+    """Resolve a row's Parent to the candidate exactly one tier up.
+
+    Parent references a HistoricalCode, which may be shared across levels;
+    the true parent is the candidate with the highest Level that is still
+    strictly above (lower Level number than) the current row.
+    """
+    parent = row.get("Parent") or ""
+    if not parent:
+        return None
+    cur_level = _level_int(row)
+    best: dict[str, str] | None = None
+    best_level = -1
+    for cand in by_hist.get(parent, []):
+        lv = _level_int(cand)
+        if 0 < lv < cur_level and lv > best_level:
+            best, best_level = cand, lv
+    return best
+
+
+def _climb_to_canton(
+    row: dict[str, str], by_hist: dict[str, list[dict[str, str]]]
+) -> dict[str, str] | None:
+    """Walk the Parent chain up to the Level-1 (canton) row, or None.
+
+    commune → district → canton (some cantons skip the district tier).
+    Guards against cycles / dangling parents.
+    """
+    cur: dict[str, str] | None = row
+    seen: set[tuple[str, str]] = set()
+    while cur is not None and cur.get("Level") != "1":
+        key = (cur.get("HistoricalCode", ""), cur.get("Level", ""))
+        if key in seen:
+            return None
+        seen.add(key)
+        cur = _parent_row(cur, by_hist)
+    return cur
+
+
+def _commune_entry(
+    row: dict[str, str], by_hist: dict[str, list[dict[str, str]]]
+) -> CommuneEntry:
+    """Build a CommuneEntry from a snapshot row, enriched with canton + URI."""
+    level = row.get("Level", "")
+    canton_row = _climb_to_canton(row, by_hist)
+    try:
+        bfs = int(row.get("BfsCode", "") or 0)
+    except ValueError:
+        bfs = 0
+    lindas = LINDAS_MUNICIPALITY_URI.format(bfs=bfs) if level == "3" else None
+    return CommuneEntry(
+        bfs_number=bfs,
+        name=row.get("Name", ""),
+        short_name=(row.get("ShortName") or None),
+        historical_code=(row.get("HistoricalCode") or None),
+        level=_AGVCH_LEVEL_LABELS.get(level, level or "?"),
+        canton=(canton_row.get("Name") if canton_row else None),
+        canton_abbr=(canton_row.get("ShortName") if canton_row else None),
+        valid_from=(row.get("ValidFrom") or None),
+        valid_to=(row.get("ValidTo") or None),  # empty ⇒ still valid
+        lindas_uri=lindas,
+    )
+
+
+def _mutation_step(m: dict[str, str]) -> MutationStep:
+    def _int_or_none(x: str | None) -> int | None:
+        try:
+            return int(x) if x else None
+        except ValueError:
+            return None
+
+    return MutationStep(
+        mutation_number=(m.get("MutationNumber") or None),
+        mutation_date=(m.get("MutationDate") or None),
+        initial_bfs=_int_or_none(m.get("InitialCode")),
+        initial_name=(m.get("InitialName") or None),
+        terminal_bfs=_int_or_none(m.get("TerminalCode")),
+        terminal_name=(m.get("TerminalName") or None),
+    )
+
+
+# ---------------------------------------------------------------------------
+# HSSO index helpers (Architecture C: dump-only, static XLSX at stable URLs)
+# ---------------------------------------------------------------------------
+#
+# HSSO exposes no API. Each chapter index page lists its tables as
+#   <a class="explorer-item" href="/de/2012/a/1a">
+#     <div class="explorer-item__title">A.1a</div>
+#     <div class="explorer-item__description">Areale nach Kantonen</div></a>
+# and each table has a stable XLSX at /get/{CHAPTER}.{NN}{suffix}.xlsx
+# (numeric part zero-padded to two digits). We build a searchable title
+# index by scraping the 20 chapter pages once and caching it.
+
+_hsso_index_cache: dict[str, tuple[float, list[HistoricalSeriesEntry]]] = {}
+
+_HSSO_CHAPTERS = "abcdefghijklmnopqrst"
+
+_HSSO_ITEM_RE = re.compile(
+    r'href="(/de/2012/([a-z])/([a-z0-9]+))"[^>]*>\s*'
+    r'<div class="explorer-item__title">([^<]+)</div>\s*'
+    r'<div class="explorer-item__description">([^<]*)</div>',
+    re.IGNORECASE,
+)
+
+
+def _hsso_xlsx_path(chapter: str, table_id: str) -> str:
+    """'a', '1a' → '/get/A.01a.xlsx' (numeric part zero-padded to 2 digits)."""
+    m = re.match(r"(\d+)([a-z]*)$", table_id)
+    if not m:
+        return f"/get/{chapter.upper()}.{table_id}.xlsx"
+    num, suffix = m.group(1), m.group(2)
+    return f"/get/{chapter.upper()}.{int(num):02d}{suffix}.xlsx"
+
+
+def _parse_hsso_chapter(html_text: str) -> list[HistoricalSeriesEntry]:
+    entries: list[HistoricalSeriesEntry] = []
+    for m in _HSSO_ITEM_RE.finditer(html_text):
+        path, chapter, table_id, code, desc = m.groups()
+        entries.append(
+            HistoricalSeriesEntry(
+                code=html.unescape(code).strip(),
+                title=html.unescape(desc).strip(),
+                chapter=chapter,
+                page_url=f"{HSSO_BASE}{path}",
+                xlsx_url=f"{HSSO_BASE}{_hsso_xlsx_path(chapter, table_id)}",
+            )
+        )
+    return entries
+
+
+async def _ensure_hsso_index() -> tuple[list[HistoricalSeriesEntry], bool]:
+    """Return (index, from_cache). Scrapes the 20 chapter pages concurrently.
+
+    A partial scrape (some chapters unreachable) is still returned but NOT
+    cached, so a transient outage can't poison the index for 24h.
+    """
+    now = time.time()
+    hit = _hsso_index_cache.get("index")
+    if hit is not None and (now - hit[0]) < HSSO_INDEX_TTL:
+        return hit[1], True
+
+    sem = asyncio.Semaphore(FANOUT_CONCURRENCY)
+
+    async def fetch_chapter(ch: str) -> list[HistoricalSeriesEntry]:
+        async with sem:
+            try:
+                text = await _get_text(f"{HSSO_BASE}/de/2012/{ch}")
+            except Exception:
+                _LOGGER.warning("hsso chapter fetch failed for %s", ch, exc_info=True)
+                return []
+            return _parse_hsso_chapter(text)
+
+    chapter_results = await asyncio.gather(
+        *(fetch_chapter(c) for c in _HSSO_CHAPTERS)
+    )
+    complete = all(chapter_results)  # every chapter yielded at least one table
+    index: list[HistoricalSeriesEntry] = [e for r in chapter_results for e in r]
+    if index and complete:
+        _hsso_index_cache["index"] = (now, index)
+    return index, False
 
 
 def _theme_code_from_dbid(dbid: str) -> str:
@@ -709,6 +1002,190 @@ class FeaturedDatasetsResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Reference layer models: communes (AGVCH) + historical series (HSSO)
+# ---------------------------------------------------------------------------
+#
+# Every reference-layer response carries `source` (attribution) and
+# `provenance` (live_api | cached) so downstream consumers never lose the
+# data lineage — the README is not passed along, the envelope is.
+
+
+class CommuneEntry(BaseModel):
+    bfs_number: int
+    name: str
+    short_name: str | None = None
+    historical_code: str | None = None
+    level: str  # Gemeinde | Bezirk | Kanton
+    canton: str | None = None
+    canton_abbr: str | None = None
+    valid_from: str | None = None
+    valid_to: str | None = None  # None ⇒ still valid at the queried date
+    lindas_uri: str | None = None  # stable LINDAS/Linked-Data identifier
+
+
+class SuccessorEntry(BaseModel):
+    bfs_number: int
+    name: str
+    lindas_uri: str | None = None
+
+
+class MutationStep(BaseModel):
+    mutation_number: str | None = None
+    mutation_date: str | None = None
+    initial_bfs: int | None = None
+    initial_name: str | None = None
+    terminal_bfs: int | None = None
+    terminal_name: str | None = None
+
+
+class HistoricalSeriesEntry(BaseModel):
+    code: str  # HSSO table code, e.g. "A.1a"
+    title: str
+    chapter: str
+    page_url: str
+    xlsx_url: str  # stable static download
+
+
+class LookupCommuneInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name_or_bfs_number: str = Field(
+        ...,
+        description=(
+            "Commune name (or substring, e.g. 'Wädenswil') or BFS number "
+            "(e.g. '293'). Numeric input is matched exactly against the "
+            "BFS number; text is matched case-insensitively against names."
+        ),
+        min_length=1,
+        max_length=100,
+    )
+    valid_at_date: str = Field(
+        default_factory=lambda: date.today().isoformat(),
+        description=(
+            "ISO date (YYYY-MM-DD): return the commune as it existed on this "
+            "date. Default: today. Use a historical date to see former communes."
+        ),
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+    )
+
+
+class ResolveHistoricalCommuneInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    bfs_number: int = Field(
+        ...,
+        description=(
+            "Historical BFS commune number to resolve, e.g. 133 (old Horgen) "
+            "or 132 (Hirzel, dissolved). The number the old statistics use."
+        ),
+        ge=1,
+        le=9999,
+    )
+    from_date: str = Field(
+        ...,
+        description=(
+            "ISO date (YYYY-MM-DD) the old data belongs to — the commune must "
+            "have existed on this date."
+        ),
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+    )
+    to_date: str = Field(
+        default_factory=lambda: date.today().isoformat(),
+        description="Target ISO date (YYYY-MM-DD) to map onto. Default: today.",
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+    )
+
+
+class ListCommunesInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    canton: str = Field(
+        ...,
+        description=(
+            "Canton abbreviation (e.g. 'ZH', 'BE') or name (e.g. 'Zürich'). "
+            "The canton join key for the whole portfolio."
+        ),
+        min_length=2,
+        max_length=40,
+    )
+    valid_at_date: str = Field(
+        default_factory=lambda: date.today().isoformat(),
+        description="ISO date (YYYY-MM-DD). Default: today.",
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+    )
+
+
+class SearchHistoricalSeriesInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    topic: str = Field(
+        ...,
+        description=(
+            "Keyword(s) to search HSSO table titles, e.g. 'Bevölkerung', "
+            "'Preise', 'Verkehr', 'Landwirtschaft'. All terms must match."
+        ),
+        min_length=2,
+        max_length=100,
+    )
+    period: str | None = Field(
+        default=None,
+        description=(
+            "Optional period hint, e.g. '1850-1900'. Informational only — HSSO "
+            "does not expose per-table period filtering; check the XLSX itself."
+        ),
+        max_length=40,
+    )
+
+
+class LookupCommuneResult(BaseModel):
+    source: str = AGVCH_ATTRIBUTION
+    provenance: str | None = None
+    error: str | None = None
+    hint: str | None = None
+    query: str | None = None
+    valid_at_date: str | None = None
+    total_matches: int | None = None
+    communes: list[CommuneEntry] | None = None
+    note: str | None = None
+
+
+class ResolveHistoricalCommuneResult(BaseModel):
+    source: str = AGVCH_ATTRIBUTION
+    provenance: str | None = None
+    error: str | None = None
+    hint: str | None = None
+    bfs_number: int | None = None
+    from_date: str | None = None
+    to_date: str | None = None
+    unchanged: bool | None = None
+    resolves_to: list[SuccessorEntry] | None = None  # today's BFS number(s)
+    mutation_path: list[MutationStep] | None = None
+    note: str | None = None
+
+
+class ListCommunesResult(BaseModel):
+    source: str = AGVCH_ATTRIBUTION
+    provenance: str | None = None
+    error: str | None = None
+    hint: str | None = None
+    canton: str | None = None
+    canton_abbr: str | None = None
+    valid_at_date: str | None = None
+    total: int | None = None
+    communes: list[CommuneEntry] | None = None
+    note: str | None = None
+
+
+class SearchHistoricalSeriesResult(BaseModel):
+    source: str = HSSO_ATTRIBUTION
+    provenance: str | None = None
+    licence_note: str = HSSO_NONCOMMERCIAL_NOTE
+    error: str | None = None
+    hint: str | None = None
+    topic: str | None = None
+    period: str | None = None
+    total_matches: int | None = None
+    series: list[HistoricalSeriesEntry] | None = None
+    note: str | None = None
+
+
+# ---------------------------------------------------------------------------
 # Response formatting helpers
 # ---------------------------------------------------------------------------
 
@@ -788,7 +1265,10 @@ mcp = FastMCP(
         "Workflow: (1) bfs_list_themes to see themes, (2) bfs_search_tables or "
         "bfs_list_tables_by_theme to find datasets, (3) bfs_get_table_metadata to "
         "understand variables and valid filter values, (4) bfs_get_data to retrieve "
-        "actual statistics. Use bfs_education_stats for Schulamt-relevant shortcuts."
+        "actual statistics. Use bfs_education_stats for Schulamt-relevant shortcuts. "
+        "Reference layer: lookup_commune / list_communes / resolve_historical_commune "
+        "resolve official BFS commune numbers (the portfolio join key) and re-key old "
+        "statistics across fusions; search_historical_series finds long-run HSSO series."
     ),
 )
 
@@ -1724,6 +2204,398 @@ def _schulamt_relevance(table_id: str) -> str:
         "px-x-1302020000_101": "⭐⭐ Sozialhilfe – sozialer Kontext Volksschule",
     }
     return relevance_map.get(table_id, "Relevant für öffentliche Verwaltung")
+
+
+# ---------------------------------------------------------------------------
+# Reference layer tools — AGVCH commune register (Architecture A)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool(
+    name="lookup_commune",
+    annotations={
+        "title": "Look up a Swiss commune",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
+)
+@_logged_tool("lookup_commune")
+async def lookup_commune(params: LookupCommuneInput) -> LookupCommuneResult:
+    """Resolve a Swiss commune by name or BFS number, as of a given date.
+
+    The BFS commune number is the portfolio's join key. This tool returns
+    the official register entry — BFS number, name, canton, validity dates
+    and the stable LINDAS URI — for a commune as it existed on `valid_at_date`.
+
+    Args:
+        params (LookupCommuneInput):
+            - name_or_bfs_number (str): name/substring or BFS number
+            - valid_at_date (str): ISO date; commune state as of this date
+
+    Returns:
+        LookupCommuneResult with matching `communes` (BFS number, canton,
+        validity, LINDAS URI). On error, `error` and `hint` are set.
+    """
+    try:
+        agvch_date = _iso_to_agvch(params.valid_at_date)
+        rows, from_cache = await _fetch_snapshot(agvch_date)
+        by_hist = _index_by_hist(rows)
+
+        query = params.name_or_bfs_number.strip()
+        is_number = query.isdigit()
+        query_lower = query.lower()
+
+        matches: list[dict[str, str]] = []
+        for r in rows:
+            if r.get("Level") != "3":  # communes only
+                continue
+            if is_number:
+                if r.get("BfsCode") == query:
+                    matches.append(r)
+            elif query_lower in r.get("Name", "").lower():
+                matches.append(r)
+
+        provenance = "cached" if from_cache else "live_api"
+        if not matches:
+            return LookupCommuneResult(
+                provenance=provenance,
+                query=query,
+                valid_at_date=params.valid_at_date,
+                total_matches=0,
+                communes=[],
+                note=(
+                    f"Keine Gemeinde für '{query}' zum {params.valid_at_date} gefunden. "
+                    "Bei historischen Nummern resolve_historical_commune verwenden."
+                ),
+            )
+
+        entries = [_commune_entry(r, by_hist) for r in matches[:50]]
+        entries.sort(key=lambda e: e.bfs_number)
+        return LookupCommuneResult(
+            provenance=provenance,
+            query=query,
+            valid_at_date=params.valid_at_date,
+            total_matches=len(matches),
+            communes=entries,
+            note=(
+                f"{len(matches)} Treffer (angezeigt: {len(entries)})."
+                if len(matches) > len(entries)
+                else None
+            ),
+        )
+    except httpx.HTTPStatusError as e:
+        return LookupCommuneResult(
+            error=f"AGVCH-API-Fehler {e.response.status_code}",
+            hint="Datum im Format YYYY-MM-DD prüfen. Quelle evtl. kurz nicht erreichbar.",
+        )
+    except Exception:
+        _LOGGER.exception("lookup_commune failed")
+        return LookupCommuneResult(
+            error="Interner Fehler beim Gemeinde-Lookup.",
+            hint="Bitte erneut versuchen.",
+        )
+
+
+@mcp.tool(
+    name="resolve_historical_commune",
+    annotations={
+        "title": "Resolve a historical commune to today's BFS number",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
+)
+@_logged_tool("resolve_historical_commune")
+async def resolve_historical_commune(
+    params: ResolveHistoricalCommuneInput,
+) -> ResolveHistoricalCommuneResult:
+    """Map a historical BFS commune number onto today's number(s).
+
+    This is the core value of the reference layer: when old statistics are
+    keyed on a BFS number that has since been merged or renamed, this tool
+    returns which of today's commune(s) that number resolves to, plus the
+    mutation path (fusions/renamings with dates). Use `resolves_to` to
+    re-key (umschlüsseln) old figures onto the current municipal division.
+
+    Args:
+        params (ResolveHistoricalCommuneInput):
+            - bfs_number (int): historical BFS number
+            - from_date (str): ISO date the old data belongs to
+            - to_date (str): ISO target date (default today)
+
+    Returns:
+        ResolveHistoricalCommuneResult with `resolves_to` (today's BFS
+        number/name/LINDAS URI) and `mutation_path`. On error, `error`/`hint`.
+    """
+    try:
+        start = _iso_to_agvch(params.from_date)
+        end = _iso_to_agvch(params.to_date)
+        bfs = str(params.bfs_number)
+
+        corr = await _fetch_agvch_csv(
+            "correspondances",
+            {
+                "includeUnmodified": "true",
+                "includeTerritoryExchange": "false",
+                "startPeriod": start,
+                "endPeriod": end,
+            },
+        )
+        related = [row for row in corr if row.get("InitialCode") == bfs]
+        if not related:
+            return ResolveHistoricalCommuneResult(
+                provenance="live_api",
+                bfs_number=params.bfs_number,
+                from_date=params.from_date,
+                to_date=params.to_date,
+                error=f"Keine Gemeinde mit BFS-Nummer {bfs} zum {params.from_date} gefunden.",
+                hint=(
+                    "Die Gemeinde muss zum from_date existiert haben. "
+                    "BFS-Nummer und Startdatum prüfen (lookup_commune)."
+                ),
+            )
+
+        successors: list[SuccessorEntry] = []
+        seen: set[str] = set()
+        for row in related:
+            tc = row.get("TerminalCode") or ""
+            if tc and tc not in seen:
+                seen.add(tc)
+                successors.append(
+                    SuccessorEntry(
+                        bfs_number=int(tc),
+                        name=row.get("TerminalName", ""),
+                        lindas_uri=LINDAS_MUNICIPALITY_URI.format(bfs=int(tc)),
+                    )
+                )
+
+        unchanged = (
+            len(successors) == 1
+            and successors[0].bfs_number == params.bfs_number
+            and related[0].get("InitialName") == related[0].get("TerminalName")
+        )
+
+        # Mutation path: the change events in range touching this commune's
+        # lineage (as origin, or as a target of a merge into a successor).
+        mutations = await _fetch_agvch_csv(
+            "mutations",
+            {
+                "includeTerritoryExchange": "false",
+                "startPeriod": start,
+                "endPeriod": end,
+            },
+        )
+        path = [
+            _mutation_step(m)
+            for m in mutations
+            if m.get("InitialCode") == bfs or (m.get("TerminalCode") or "") in seen
+        ][:50]
+
+        if unchanged:
+            note = (
+                f"BFS-Nummer {bfs} ist zwischen {params.from_date} und "
+                f"{params.to_date} unverändert — keine Umschlüsselung nötig."
+            )
+        else:
+            targets = ", ".join(f"{s.name} ({s.bfs_number})" for s in successors)
+            note = (
+                f"Alte Statistik auf BFS-Nummer {bfs} umschlüsseln auf: {targets}."
+            )
+
+        return ResolveHistoricalCommuneResult(
+            provenance="live_api",
+            bfs_number=params.bfs_number,
+            from_date=params.from_date,
+            to_date=params.to_date,
+            unchanged=unchanged,
+            resolves_to=successors,
+            mutation_path=path,
+            note=note,
+        )
+    except httpx.HTTPStatusError as e:
+        return ResolveHistoricalCommuneResult(
+            error=f"AGVCH-API-Fehler {e.response.status_code}",
+            hint="Datumsangaben (YYYY-MM-DD) prüfen. Quelle evtl. kurz nicht erreichbar.",
+        )
+    except Exception:
+        _LOGGER.exception("resolve_historical_commune failed")
+        return ResolveHistoricalCommuneResult(
+            error="Interner Fehler bei der Umschlüsselung.",
+            hint="Bitte erneut versuchen.",
+        )
+
+
+@mcp.tool(
+    name="list_communes",
+    annotations={
+        "title": "List communes of a canton",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
+)
+@_logged_tool("list_communes")
+async def list_communes(params: ListCommunesInput) -> ListCommunesResult:
+    """List all communes of a canton, as of a given date.
+
+    Canton membership is derived from the snapshot's Parent chain
+    (commune → district → canton), so this reflects the official division
+    on `valid_at_date`. Each entry carries its BFS number and LINDAS URI.
+
+    Args:
+        params (ListCommunesInput):
+            - canton (str): abbreviation ('ZH') or name ('Zürich')
+            - valid_at_date (str): ISO date; default today
+
+    Returns:
+        ListCommunesResult with the canton's `communes`, sorted by BFS
+        number. On error, `error` and `hint` are set.
+    """
+    try:
+        agvch_date = _iso_to_agvch(params.valid_at_date)
+        rows, from_cache = await _fetch_snapshot(agvch_date)
+        by_hist = _index_by_hist(rows)
+        provenance = "cached" if from_cache else "live_api"
+
+        canton_in = params.canton.strip()
+        canton_lower = canton_in.lower()
+        target: dict[str, str] | None = None
+        for r in rows:
+            if r.get("Level") != "1":
+                continue
+            if (
+                r.get("ShortName", "").lower() == canton_lower
+                or canton_lower in r.get("Name", "").lower()
+            ):
+                target = r
+                break
+
+        if target is None:
+            return ListCommunesResult(
+                provenance=provenance,
+                error=f"Kanton '{canton_in}' nicht gefunden.",
+                hint="Kürzel wie 'ZH' oder Name wie 'Zürich' verwenden.",
+            )
+
+        target_hist = target["HistoricalCode"]
+        communes: list[CommuneEntry] = []
+        for r in rows:
+            if r.get("Level") != "3":
+                continue
+            canton_row = _climb_to_canton(r, by_hist)
+            if canton_row is not None and canton_row.get("HistoricalCode") == target_hist:
+                communes.append(_commune_entry(r, by_hist))
+        communes.sort(key=lambda e: e.bfs_number)
+
+        return ListCommunesResult(
+            provenance=provenance,
+            canton=target.get("Name"),
+            canton_abbr=target.get("ShortName"),
+            valid_at_date=params.valid_at_date,
+            total=len(communes),
+            communes=communes,
+        )
+    except httpx.HTTPStatusError as e:
+        return ListCommunesResult(
+            error=f"AGVCH-API-Fehler {e.response.status_code}",
+            hint="Datum (YYYY-MM-DD) prüfen. Quelle evtl. kurz nicht erreichbar.",
+        )
+    except Exception:
+        _LOGGER.exception("list_communes failed")
+        return ListCommunesResult(
+            error="Interner Fehler beim Auflisten der Gemeinden.",
+            hint="Bitte erneut versuchen.",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Reference layer tool — HSSO historical series (Architecture C)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool(
+    name="search_historical_series",
+    annotations={
+        "title": "Search Historical Statistics of Switzerland (HSSO)",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
+)
+@_logged_tool("search_historical_series")
+async def search_historical_series(
+    params: SearchHistoricalSeriesInput,
+) -> SearchHistoricalSeriesResult:
+    """Search long-run historical time series (HSSO) by topic.
+
+    Historical Statistics of Switzerland provides long-run series (roughly
+    19th–20th century) as static XLSX tables. This tool searches the table
+    catalogue by keyword and returns each match with its page and a stable
+    XLSX download URL.
+
+    Licence: HSSO is CC BY-NC-SA 3.0 — attribution required, NonCommercial.
+    Every response carries that notice in `licence_note`.
+
+    Args:
+        params (SearchHistoricalSeriesInput):
+            - topic (str): keyword(s); all must match the title
+            - period (str): optional period hint (informational only)
+
+    Returns:
+        SearchHistoricalSeriesResult with matching `series` (code, title,
+        page URL, XLSX URL). On error, `error` and `hint` are set.
+    """
+    try:
+        index, from_cache = await _ensure_hsso_index()
+        if not index:
+            return SearchHistoricalSeriesResult(
+                topic=params.topic,
+                period=params.period,
+                total_matches=0,
+                series=[],
+                error="HSSO-Katalog aktuell nicht erreichbar.",
+                hint="hsso.ch antwortet nicht. Bitte in einigen Minuten erneut versuchen.",
+            )
+
+        terms = params.topic.lower().split()
+        matches = [
+            e for e in index if all(t in e.title.lower() for t in terms)
+        ]
+        shown = matches[:25]
+
+        notes: list[str] = []
+        if params.period:
+            notes.append(
+                f"Periodenfilter '{params.period}' ist nur ein Hinweis — HSSO bietet "
+                "keine tabellengenaue Periodenfilterung; Periode direkt in der XLSX prüfen."
+            )
+        if not matches:
+            notes.append(
+                "Keine Treffer — breitere Stichworte versuchen "
+                "(z.B. 'Bevölkerung', 'Preise', 'Verkehr')."
+            )
+        elif len(matches) > len(shown):
+            notes.append(f"{len(matches)} Treffer, angezeigt: {len(shown)}.")
+
+        return SearchHistoricalSeriesResult(
+            provenance="cached" if from_cache else "live_api",
+            topic=params.topic,
+            period=params.period,
+            total_matches=len(matches),
+            series=shown,
+            note=" ".join(notes) if notes else None,
+        )
+    except Exception:
+        _LOGGER.exception("search_historical_series failed")
+        return SearchHistoricalSeriesResult(
+            error="Interner Fehler bei der HSSO-Suche.",
+            hint="hsso.ch evtl. nicht erreichbar. Bitte später erneut versuchen.",
+        )
 
 
 # ---------------------------------------------------------------------------
