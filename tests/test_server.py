@@ -868,8 +868,15 @@ class TestToolLogging:
                 _LOGGER.propagate = False
 
         events = [r.msg for r in caplog.records if isinstance(r.msg, dict)]
-        starts = [e for e in events if e.get("event") == "tool_start"]
-        ends = [e for e in events if e.get("event") == "tool_end"]
+        # Depending on the pytest version, caplog may capture a propagated
+        # record more than once (its handler and the root capture handler
+        # both see it). The server emits each line exactly once — the single
+        # copy in "Captured stderr" confirms that — so we assert on distinct
+        # logical events, keyed by (event, correlation-id), not raw record
+        # count.
+        unique = {(e.get("event"), e.get("rid")): e for e in events}
+        starts = [e for e in unique.values() if e.get("event") == "tool_start"]
+        ends = [e for e in unique.values() if e.get("event") == "tool_end"]
 
         assert len(starts) == 1, f"expected 1 tool_start, got {events}"
         assert len(ends) == 1, f"expected 1 tool_end, got {events}"
