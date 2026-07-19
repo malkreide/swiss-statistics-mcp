@@ -25,16 +25,22 @@ def _clear_caches():
     cannot mask a mock in the next."""
     from swiss_statistics_mcp.server import (
         _catalog_cache,
+        _hsso_index_cache,
         _metadata_cache,
         _metadata_timestamps,
+        _snapshot_cache,
     )
     _catalog_cache.clear()
     _metadata_cache.clear()
     _metadata_timestamps.clear()
+    _snapshot_cache.clear()
+    _hsso_index_cache.clear()
     yield
     _catalog_cache.clear()
     _metadata_cache.clear()
     _metadata_timestamps.clear()
+    _snapshot_cache.clear()
+    _hsso_index_cache.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -905,6 +911,358 @@ class TestToolLogging:
 
 
 # ---------------------------------------------------------------------------
+# Reference layer: AGVCH communes + HSSO historical series
+# ---------------------------------------------------------------------------
+
+# Snapshot fixture reproduces the real trap: HistoricalCode 10078 is BOTH
+# ZH's 'Bezirk Horgen' (Level 2) and VS's commune 'Vionnaz' (Level 3).
+_SNAPSHOT_CSV = (
+    "HistoricalCode,BfsCode,ValidFrom,ValidTo,Level,Parent,Name,ShortName,"
+    "Inscription,Radiation,Rec_Type_fr,Rec_Type_de\n"
+    "1,1,12.09.1848,,1,,Zürich,ZH,,,,\n"
+    "10078,201,01.01.1900,,2,1,Bezirk Horgen,Horgen,,,,\n"
+    "16123,293,01.01.2019,,3,10078,Wädenswil,Wädenswil,,,,\n"
+    "13300,295,01.01.2018,,3,10078,Horgen,Horgen,,,,\n"
+    "23,23,12.09.1848,,1,,Valais / Wallis,VS,,,,\n"
+    "10013,2308,01.01.1900,,2,23,District de Monthey,Monthey,,,,\n"
+    "10078,6158,01.01.1900,,3,10013,Vionnaz,Vionnaz,,,,\n"
+)
+
+_CORR_CSV = (
+    "InitialHistoricalCode,InitialCode,InitialName,InitialParentHistoricalCode,"
+    "InitialParentName,InitialStep,TerminalHistoricalCode,TerminalCode,TerminalName,"
+    "TerminalParentHistoricalCode,TerminalParentName,TerminalStep\n"
+    "13300,133,Horgen,10078,Bezirk Horgen,24,16999,295,Horgen,10078,Bezirk Horgen,24\n"
+)
+
+_MUT_CSV = (
+    "MutationNumber,MutationDate,InitialHistoricalCode,InitialCode,InitialName,"
+    "InitialParentHistoricalCode,InitialParentName,InitialStep,TerminalHistoricalCode,"
+    "TerminalCode,TerminalName,TerminalParentHistoricalCode,TerminalParentName,TerminalStep\n"
+    "3582,01.01.2018,13200,132,Hirzel,10078,Bezirk Horgen,26,16999,295,Horgen,10078,Bezirk Horgen,21\n"
+    "3582,01.01.2018,13300,133,Horgen,10078,Bezirk Horgen,26,16999,295,Horgen,10078,Bezirk Horgen,21\n"
+)
+
+_HSSO_CHAPTER_B = (
+    '<html><body>'
+    '<a class="explorer-item" href="/de/2012/b/1a">'
+    '<div class="explorer-item__title">B.1a</div>'
+    '<div class="explorer-item__description">Wohnbevölkerung nach Kantonen</div></a>'
+    '<a class="explorer-item" href="/de/2012/b/11b">'
+    '<div class="explorer-item__title">B.11b</div>'
+    '<div class="explorer-item__description">Erwerbstätige nach Sektoren</div></a>'
+    '</body></html>'
+)
+
+
+def _fake_get_text_factory():
+    async def fake_get_text(url: str) -> str:
+        if "snapshot" in url:
+            return _SNAPSHOT_CSV
+        if "correspondances" in url:
+            return _CORR_CSV
+        if "mutations" in url:
+            return _MUT_CSV
+        if "/de/2012/b" in url:
+            return _HSSO_CHAPTER_B
+        if "/de/2012/" in url:
+            return "<html><body></body></html>"  # other chapters empty
+        raise AssertionError(f"unexpected URL: {url}")
+    return fake_get_text
+
+
+class TestAgvchHelpers:
+    def test_iso_to_agvch(self):
+        from swiss_statistics_mcp.server import _iso_to_agvch
+        assert _iso_to_agvch("2025-01-01") == "01-01-2025"
+
+    def test_hsso_xlsx_derivation_zero_pads(self):
+        from swiss_statistics_mcp.server import _hsso_xlsx_path
+        assert _hsso_xlsx_path("a", "1a") == "/get/A.01a.xlsx"
+        assert _hsso_xlsx_path("b", "11b") == "/get/B.11b.xlsx"
+
+    def test_climb_to_canton_disambiguates_shared_historical_code(self):
+        """Regression: HistoricalCode 10078 exists at two levels/cantons;
+        Wädenswil (Level 3, Parent 10078) must climb to ZH, not VS."""
+        import csv
+        import io
+
+        from swiss_statistics_mcp.server import _climb_to_canton, _index_by_hist
+
+        rows = list(csv.DictReader(io.StringIO(_SNAPSHOT_CSV)))
+        by_hist = _index_by_hist(rows)
+        waedenswil = next(r for r in rows if r["BfsCode"] == "293")
+        vionnaz = next(r for r in rows if r["BfsCode"] == "6158")
+
+        assert _climb_to_canton(waedenswil, by_hist)["ShortName"] == "ZH"
+        assert _climb_to_canton(vionnaz, by_hist)["ShortName"] == "VS"
+
+    def test_parse_hsso_chapter(self):
+        from swiss_statistics_mcp.server import _parse_hsso_chapter
+        entries = _parse_hsso_chapter(_HSSO_CHAPTER_B)
+        assert len(entries) == 2
+        assert entries[0].code == "B.1a"
+        assert entries[0].title == "Wohnbevölkerung nach Kantonen"
+        assert entries[0].xlsx_url == "https://hsso.ch/get/B.01a.xlsx"
+
+
+class TestLookupCommune:
+    @pytest.mark.asyncio
+    async def test_lookup_by_name_resolves_canton(self):
+        from swiss_statistics_mcp.server import LookupCommuneInput, lookup_commune
+
+        with patch(
+            "swiss_statistics_mcp.server._get_text",
+            side_effect=_fake_get_text_factory(),
+        ):
+            result = await lookup_commune(
+                LookupCommuneInput(name_or_bfs_number="Wädenswil", valid_at_date="2025-01-01")
+            )
+        data = result.model_dump(exclude_none=True)
+        assert data["total_matches"] == 1
+        c = data["communes"][0]
+        assert c["bfs_number"] == 293
+        assert c["canton_abbr"] == "ZH"
+        assert c["lindas_uri"] == "https://ld.admin.ch/municipality/293"
+        assert data["provenance"] == "live_api"
+
+    @pytest.mark.asyncio
+    async def test_lookup_by_number_exact(self):
+        from swiss_statistics_mcp.server import LookupCommuneInput, lookup_commune
+
+        with patch(
+            "swiss_statistics_mcp.server._get_text",
+            side_effect=_fake_get_text_factory(),
+        ):
+            result = await lookup_commune(
+                LookupCommuneInput(name_or_bfs_number="295", valid_at_date="2025-01-01")
+            )
+        data = result.model_dump(exclude_none=True)
+        assert data["total_matches"] == 1
+        assert data["communes"][0]["name"] == "Horgen"
+
+    @pytest.mark.asyncio
+    async def test_lookup_not_found_is_graceful(self):
+        from swiss_statistics_mcp.server import LookupCommuneInput, lookup_commune
+
+        with patch(
+            "swiss_statistics_mcp.server._get_text",
+            side_effect=_fake_get_text_factory(),
+        ):
+            result = await lookup_commune(
+                LookupCommuneInput(name_or_bfs_number="Atlantis", valid_at_date="2025-01-01")
+            )
+        data = result.model_dump(exclude_none=True)
+        assert data["total_matches"] == 0
+        assert "note" in data
+        assert "error" not in data  # empty result is not an error
+
+
+class TestResolveHistoricalCommune:
+    @pytest.mark.asyncio
+    async def test_anchor_query_horgen(self):
+        """Anchor: old BFS 133 (Horgen) → today's 295 with mutation path."""
+        from swiss_statistics_mcp.server import (
+            ResolveHistoricalCommuneInput,
+            resolve_historical_commune,
+        )
+
+        with patch(
+            "swiss_statistics_mcp.server._get_text",
+            side_effect=_fake_get_text_factory(),
+        ):
+            result = await resolve_historical_commune(
+                ResolveHistoricalCommuneInput(
+                    bfs_number=133, from_date="2000-01-01", to_date="2025-01-01"
+                )
+            )
+        data = result.model_dump(exclude_none=True)
+        assert data["unchanged"] is False
+        assert len(data["resolves_to"]) == 1
+        assert data["resolves_to"][0]["bfs_number"] == 295
+        assert data["resolves_to"][0]["lindas_uri"] == "https://ld.admin.ch/municipality/295"
+        # mutation path includes both Hirzel and Horgen merging into 295
+        assert len(data["mutation_path"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_unknown_number_returns_error(self):
+        from swiss_statistics_mcp.server import (
+            ResolveHistoricalCommuneInput,
+            resolve_historical_commune,
+        )
+
+        with patch(
+            "swiss_statistics_mcp.server._get_text",
+            side_effect=_fake_get_text_factory(),
+        ):
+            result = await resolve_historical_commune(
+                ResolveHistoricalCommuneInput(
+                    bfs_number=9998, from_date="2000-01-01", to_date="2025-01-01"
+                )
+            )
+        data = result.model_dump(exclude_none=True)
+        assert "error" in data and "hint" in data
+
+
+class TestListCommunes:
+    @pytest.mark.asyncio
+    async def test_list_zurich(self):
+        from swiss_statistics_mcp.server import ListCommunesInput, list_communes
+
+        with patch(
+            "swiss_statistics_mcp.server._get_text",
+            side_effect=_fake_get_text_factory(),
+        ):
+            result = await list_communes(
+                ListCommunesInput(canton="ZH", valid_at_date="2025-01-01")
+            )
+        data = result.model_dump(exclude_none=True)
+        assert data["canton"] == "Zürich"
+        # Only ZH communes (Wädenswil, Horgen) — Vionnaz belongs to VS
+        codes = sorted(c["bfs_number"] for c in data["communes"])
+        assert codes == [293, 295]
+
+    @pytest.mark.asyncio
+    async def test_unknown_canton_error(self):
+        from swiss_statistics_mcp.server import ListCommunesInput, list_communes
+
+        with patch(
+            "swiss_statistics_mcp.server._get_text",
+            side_effect=_fake_get_text_factory(),
+        ):
+            result = await list_communes(
+                ListCommunesInput(canton="XX", valid_at_date="2025-01-01")
+            )
+        data = result.model_dump(exclude_none=True)
+        assert "error" in data
+
+
+class TestSearchHistoricalSeries:
+    @pytest.mark.asyncio
+    async def test_search_matches_and_carries_nc_licence(self):
+        from swiss_statistics_mcp.server import (
+            SearchHistoricalSeriesInput,
+            search_historical_series,
+        )
+
+        with patch(
+            "swiss_statistics_mcp.server._get_text",
+            side_effect=_fake_get_text_factory(),
+        ):
+            result = await search_historical_series(
+                SearchHistoricalSeriesInput(topic="Wohnbevölkerung")
+            )
+        data = result.model_dump(exclude_none=True)
+        assert data["total_matches"] == 1
+        assert data["series"][0]["xlsx_url"] == "https://hsso.ch/get/B.01a.xlsx"
+        # NonCommercial notice must always be present
+        assert "NonCommercial" in data["licence_note"]
+
+    @pytest.mark.asyncio
+    async def test_search_no_match_period_hint(self):
+        from swiss_statistics_mcp.server import (
+            SearchHistoricalSeriesInput,
+            search_historical_series,
+        )
+
+        with patch(
+            "swiss_statistics_mcp.server._get_text",
+            side_effect=_fake_get_text_factory(),
+        ):
+            result = await search_historical_series(
+                SearchHistoricalSeriesInput(topic="Nichtsdergleichen", period="1850-1900")
+            )
+        data = result.model_dump(exclude_none=True)
+        assert data["total_matches"] == 0
+        assert "Periodenfilter" in data["note"]
+
+
+class TestReferenceLayerResilience:
+    @pytest.fixture(autouse=True)
+    def _fast_retries(self, monkeypatch):
+        import swiss_statistics_mcp.server as srv
+        monkeypatch.setattr(srv, "RETRY_WAIT_INITIAL", 0.001)
+        monkeypatch.setattr(srv, "RETRY_WAIT_MAX", 0.002)
+
+    @pytest.mark.asyncio
+    async def test_get_text_retries_on_503(self, monkeypatch):
+        import httpx
+
+        from swiss_statistics_mcp.server import _get_text
+
+        attempts = {"n": 0}
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            attempts["n"] += 1
+            if attempts["n"] < 2:
+                return httpx.Response(503, request=request)
+            return httpx.Response(200, text="ok", request=request)
+
+        transport = httpx.MockTransport(handler)
+        real_client = httpx.AsyncClient
+        monkeypatch.setattr(
+            httpx, "AsyncClient", lambda **kw: real_client(transport=transport, **kw)
+        )
+
+        assert await _get_text("https://example.invalid") == "ok"
+        assert attempts["n"] == 2
+
+    @pytest.mark.asyncio
+    async def test_lookup_network_error_is_graceful(self):
+        from swiss_statistics_mcp.server import LookupCommuneInput, lookup_commune
+
+        async def boom(url: str) -> str:
+            raise ConnectionError("upstream down")
+
+        with patch("swiss_statistics_mcp.server._get_text", side_effect=boom):
+            result = await lookup_commune(
+                LookupCommuneInput(name_or_bfs_number="Zürich", valid_at_date="2025-01-01")
+            )
+        data = result.model_dump(exclude_none=True)
+        assert "error" in data and "hint" in data
+
+    @pytest.mark.asyncio
+    async def test_hsso_all_chapters_down_is_graceful(self):
+        from swiss_statistics_mcp.server import (
+            SearchHistoricalSeriesInput,
+            search_historical_series,
+        )
+
+        async def boom(url: str) -> str:
+            raise ConnectionError("hsso down")
+
+        with patch("swiss_statistics_mcp.server._get_text", side_effect=boom):
+            result = await search_historical_series(
+                SearchHistoricalSeriesInput(topic="Bevölkerung")
+            )
+        data = result.model_dump(exclude_none=True)
+        assert data["total_matches"] == 0
+        assert "error" in data
+
+
+class TestReferenceLayerValidation:
+    def test_bad_date_rejected(self):
+        from swiss_statistics_mcp.server import LookupCommuneInput
+        with pytest.raises(Exception):
+            LookupCommuneInput(name_or_bfs_number="Zürich", valid_at_date="01-01-2025")
+
+    def test_bfs_number_range(self):
+        from swiss_statistics_mcp.server import ResolveHistoricalCommuneInput
+        with pytest.raises(Exception):
+            ResolveHistoricalCommuneInput(bfs_number=0, from_date="2000-01-01")
+
+    def test_short_topic_rejected(self):
+        from swiss_statistics_mcp.server import SearchHistoricalSeriesInput
+        with pytest.raises(Exception):
+            SearchHistoricalSeriesInput(topic="x")
+
+    def test_defaults_to_today(self):
+        from swiss_statistics_mcp.server import LookupCommuneInput
+        params = LookupCommuneInput(name_or_bfs_number="Zürich")
+        assert len(params.valid_at_date) == 10  # YYYY-MM-DD
+
+
+# ---------------------------------------------------------------------------
 # Live smoke tests (require network – run separately)
 # ---------------------------------------------------------------------------
 
@@ -948,3 +1306,40 @@ class TestLiveAPI:
         data = result.model_dump(exclude_none=True)
         assert "rows" in data
         assert len(data["rows"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_live_lookup_commune(self):
+        from swiss_statistics_mcp.server import LookupCommuneInput, lookup_commune
+        result = await lookup_commune(
+            LookupCommuneInput(name_or_bfs_number="Wädenswil", valid_at_date="2025-01-01")
+        )
+        data = result.model_dump(exclude_none=True)
+        assert data["communes"][0]["canton_abbr"] == "ZH"
+
+    @pytest.mark.asyncio
+    async def test_live_resolve_anchor(self):
+        from swiss_statistics_mcp.server import (
+            ResolveHistoricalCommuneInput,
+            resolve_historical_commune,
+        )
+        result = await resolve_historical_commune(
+            ResolveHistoricalCommuneInput(
+                bfs_number=133, from_date="2000-01-01", to_date="2025-01-01"
+            )
+        )
+        data = result.model_dump(exclude_none=True)
+        # Old Horgen (133) re-keys onto today's 295
+        assert 295 in [s["bfs_number"] for s in data["resolves_to"]]
+
+    @pytest.mark.asyncio
+    async def test_live_search_historical_series(self):
+        from swiss_statistics_mcp.server import (
+            SearchHistoricalSeriesInput,
+            search_historical_series,
+        )
+        result = await search_historical_series(
+            SearchHistoricalSeriesInput(topic="Bevölkerung")
+        )
+        data = result.model_dump(exclude_none=True)
+        assert data["total_matches"] > 0
+        assert data["series"][0]["xlsx_url"].endswith(".xlsx")
