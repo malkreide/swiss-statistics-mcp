@@ -4,7 +4,7 @@
 
 # 📊 swiss-statistics-mcp
 
-![Version](https://img.shields.io/badge/version-0.3.0-blue)
+![Version](https://img.shields.io/badge/version-0.4.0-blue)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-purple)](https://modelcontextprotocol.io/)
@@ -53,9 +53,10 @@ Breaking Changes siehe [CHANGELOG.md](./CHANGELOG.md).
 
 ## Funktionen
 
-- 📊 **13 Tools**: 9 über 21 statistische Themengebiete (682 Datensätze) + eine 4-Tool-Referenzschicht (Gemeinden & Historik)
+- 📊 **15 Tools**: 9 über 21 statistische Themengebiete (682 Datensätze) + eine 4-Tool-Referenzschicht (Gemeinden & Historik) + 2 Tools für Bau- und Immobilienstatistik
 - 🔍 **Volltextsuche** über den gesamten BFS-Datenkatalog
 - 🎓 **Convenience-Tools** für Bildungsstatistik und Bevölkerungsdaten
+- 🏗️ **Baustatistik** — neu erstellte Gebäude/Wohnungen und Bauinvestitionen inkl. Arbeitsvorrat als Frühindikator
 - 🏔️ **Kantonsvergleich** für beliebige Tabellen und Merkmale
 - 🔓 **Kein API-Schlüssel erforderlich** — alle Daten unter offenen Lizenzen
 - ☁️ **Dualer Transport** — stdio (Claude Desktop) + Streamable HTTP (Cloud)
@@ -226,8 +227,10 @@ für maschinen-lesbare Trunkierungs-Erkennung.
 | `resolve_historical_commune` | `ResolveHistoricalCommuneResult` |
 | `list_communes` | `ListCommunesResult` |
 | `search_historical_series` | `SearchHistoricalSeriesResult` |
+| `bfs_construction_activity` | `ConstructionActivityResult` |
+| `bfs_construction_investment` | `ConstructionInvestmentResult` |
 
-Die Ergebnisse der Referenzschicht führen zusätzlich `source` (Quellenangabe) und `provenance` (`live_api` \| `cached`); `SearchHistoricalSeriesResult` trägt zudem `licence_note` mit dem obligatorischen HSSO-NonCommercial-Hinweis.
+Die Ergebnisse der Referenzschicht führen zusätzlich `source` (Quellenangabe) und `provenance` (`live_api` \| `cached`); `SearchHistoricalSeriesResult` trägt zudem `licence_note` mit dem obligatorischen HSSO-NonCommercial-Hinweis. Die Bau-Ergebnisse tragen `source` + `provenance` nach demselben Envelope-Muster.
 
 ---
 
@@ -248,8 +251,20 @@ Die Ergebnisse der Referenzschicht führen zusätzlich `source` (Quellenangabe) 
 | `resolve_historical_commune` | Historische BFS-Nummer auf heutige Nummer(n) abbilden — alte Statistiken über Fusionen umschlüsseln |
 | `list_communes` | Alle Gemeinden eines Kantons zu einem Stichtag auflisten |
 | `search_historical_series` | Langzeit-Zeitreihen der Historischen Statistik der Schweiz (HSSO) durchsuchen |
+| `bfs_construction_activity` | Neu erstellte Gebäude & Wohnungen pro Gemeinde (jährlich), inkl. Zimmerzahl-Verteilung |
+| `bfs_construction_investment` | Bauinvestitionen & Arbeitsvorrat (Frühindikator) nach Grossregion/Kanton/Gemeinde |
 
-Die letzten vier Tools bilden die **Referenzschicht** des Portfolios (siehe [Join Keys](#join-keys)): Sie machen amtliche BFS-Gemeindenummern zum verlässlichen Join-Key und ermöglichen die Umschlüsselung von Statistiken über Gemeindefusionen hinweg.
+Vier dieser Tools bilden die **Referenzschicht** des Portfolios (siehe [Join Keys](#join-keys)): Sie machen amtliche BFS-Gemeindenummern zum verlässlichen Join-Key und ermöglichen die Umschlüsselung von Statistiken über Gemeindefusionen hinweg. Die beiden `bfs_construction_*`-Tools decken STAT-TAB-Thema 09 (Bau- und Wohnungswesen) ab — siehe [Bau-Quellen](#bau-quellen).
+
+### Bau-Quellen
+
+| Cube-ID | Titel | Abdeckung | Genutzt von |
+|---------|-------|-----------|-------------|
+| `px-x-0904030000_106` | Neu erstellte Gebäude mit Wohnungen nach Gemeinde, Gebäudetyp | 2013– | `bfs_construction_activity` |
+| `px-x-0904030000_105` | Neu erstellte Wohnungen nach Gemeinde, Anzahl Zimmer | 2013– | `bfs_construction_activity` |
+| `px-x-0904010000_205` | Bauinvestitionen und Arbeitsvorrat nach Grossregion/Kanton/Gemeinde | 1994– | `bfs_construction_investment` |
+
+> Die Gemeinde-Baustatistik vor 2013 liegt in den eingestellten Cubes `px-x-0904030000_101`/`_104` (1995–2012), die eine andere Geo-Kodierung nutzen und von diesen Tools nicht abgefragt werden. Gebäude-/Wohnungszahlen sind die **konsolidierte amtliche Jahresstatistik** — für tagesaktuelle Registerstände und die Bau-Pipeline gegen `swiss-housing-mcp` cross-validieren (bewusste Redundanz).
 
 ### Beispiel-Abfragen
 
@@ -263,6 +278,8 @@ Die letzten vier Tools bilden die **Referenzschicht** des Portfolios (siehe [Joi
 | *«Welche Zürcher Gemeinden sind seit 2000 fusioniert, und auf welche heutigen BFS-Nummern muss ich alte Statistiken umschlüsseln?»* | `resolve_historical_commune` |
 | *«Liste alle Gemeinden des Kantons Glarus heute auf»* | `list_communes` |
 | *«Finde Langzeitreihen zur Bevölkerung in der HSSO»* | `search_historical_series` |
+| *«Wie viele Wohnungen wurden seit 2018 in Winterthur neu erstellt, nach Zimmerzahl?»* | `bfs_construction_activity` |
+| *«Wie hoch sind Bauinvestitionen und Arbeitsvorrat im Kanton Zürich?»* | `bfs_construction_investment` |
 
 [→ Weitere Anwendungsbeispiele nach Zielgruppe →](EXAMPLES.md)
 
@@ -293,8 +310,9 @@ Die letzten vier Tools bilden die **Referenzschicht** des Portfolios (siehe [Joi
 │   Claude / KI   │────▶│  Swiss Statistics MCP          │────▶│  BFS STAT-TAB            │
 │   (MCP Host)    │◀────│  (MCP Server)                │◀────│  PxWeb API v1            │
 └─────────────────┘     │                              │     └──────────────────────────┘
-                        │  13 Tools                    │
-                        │  + Gemeinde- & Historik-Ref  │
+                        │  15 Tools                    │
+                        │  + Gemeinde-/Historik-Ref    │
+                        │  + Baustatistik (Thema 09)   │
                         │  Stdio | Streamable HTTP     │
                         │                              │
                         │  Keine Authentifizierung     │
@@ -338,7 +356,7 @@ Die Referenzschicht existiert, damit Daten verschiedener Server des [Swiss Publi
 swiss-statistics-mcp/
 ├── src/swiss_statistics_mcp/
 │   ├── __init__.py              # Package
-│   └── server.py                # 13 Tools
+│   └── server.py                # 15 Tools
 ├── tests/
 │   └── test_server.py           # Unit + Integrationstests (gemockt)
 ├── .github/workflows/ci.yml     # GitHub Actions (Python 3.11/3.12/3.13)
@@ -405,6 +423,12 @@ Der Server absorbiert transiente BFS-API-Aussetzer, bevor sie das LLM erreichen:
 - **JSON-STAT2:** Komplexe Kreuztabellierungen können grosse Ergebnismengen liefern; Dimensionsfilter zur Eingrenzung verwenden
 - **Gemeindeverzeichnis (AGVCH):** Live-Snapshot-CSV-Header nutzen `Inscription/Radiation/Rec_Type_fr` (nicht die `Einschreibung/Streichung`-Namen im API-PDF); `HistoricalCode` ist nicht ebenenübergreifend eindeutig, daher wird der Kanton durch schrittweises Verfolgen der `Parent`-Kette hergeleitet. Snapshots/Mutationen werden 24 h gecacht.
 - **HSSO:** Lizenz **CC BY-NC-SA 3.0 (NonCommercial)** — Namensnennung erforderlich, keine kommerzielle Nutzung; jede Antwort trägt dies in `licence_note`. HSSO bietet keinen tabellengenauen Periodenfilter, daher ist das `period`-Argument von `search_historical_series` nur ein Hinweis — die tatsächliche Spanne in der XLSX prüfen. `search_historical_series` liefert die stabile XLSX-Download-URL, nicht die geparsten Reihenwerte.
+- **PxWeb-Gemeindecodes sind cube-übergreifend nicht konsistent.** In `px-x-0904030000_106`/`_107` IST der Wert-Code die nullgepolsterte BFS-Nummer (`0261`); in `px-x-0904030000_105` ist er eine opake fortlaufende ID (`160`), und die BFS-Nummer steht nur im Label (`......0261 Zürich`). `bfs_construction_activity` löst jeden Cube gegen seine eigenen Live-Dimensionswerte auf, indem es die im Label eingebettete BFS-Nummer matcht — nie durch Raten des Codes.
+- **Bau-Abdeckung:** Die aktuelle Gemeinde-Baustatistik beginnt **2013**; `bfs_construction_activity` akzeptiert daher `since_year >= 2013`. Die Werte sind die konsolidierte amtliche Jahresstatistik. Bauinvestitionswerte (`bfs_construction_investment`) sind in **1000 CHF**; der `Arbeitsvorrat` ist das Bauvolumen des Folgejahres (monetärer Frühindikator).
+
+### Am Horizont
+
+- **`price_index(index=impi|baupreisindex)`** — der Schweizerische Wohnimmobilienpreisindex (IMPI) und der Baupreisindex sind **nicht** in STAT-TAB; sie werden über die BFS-DAM-Asset-API (`dam-api.bfs.admin.ch`) mit Metadaten auf opendata.swiss (CKAN) publiziert. Beim Sondieren gefundene Eigenheiten: `ckan.opendata.swiss` liefert Default-User-Agents ein **HTTP 403** (ein eigener User-Agent ist nötig), und DAM-Assets mischen Formate (einige IMPI-Assets sind PDF, die Daten liegen in XLSX). Dieses Tool ist für ein späteres Minor-Release geplant, da das XLSX-Parsing der fragilste Teil der Oberfläche ist.
 
 ---
 

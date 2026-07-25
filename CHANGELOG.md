@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-25
+
+### Added
+- **Construction & real-estate tools** (STAT-TAB theme 09, Bau- und Wohnungswesen):
+    - `bfs_construction_activity(municipality_bfs, since_year=2015)` →
+      `ConstructionActivityResult` — yearly new buildings
+      (`px-x-0904030000_106`) and new dwellings broken down by number of rooms
+      (`px-x-0904030000_105`) for a commune. Cross-validation hint points to
+      `swiss-housing-mcp` for register states / the construction pipeline
+      (deliberate redundancy).
+    - `bfs_construction_investment(level, code, since_year=2015)` →
+      `ConstructionInvestmentResult` — building investment and Arbeitsvorrat
+      (the monetary leading indicator) from `px-x-0904010000_205`, by
+      grossregion / kanton / gemeinde.
+- Both results carry the `source` + `provenance` envelope (`live_api`) matching
+  the reference layer. `bfs_construction_investment` reports its `unit`
+  (`1000 CHF`).
+- Reusable json-stat2 helpers `_iter_jsonstat2` / `_jsonstat2_label` that
+  preserve value *codes* (not just labels) for robust code-based filtering.
+- README (EN + DE): new **Construction sources** cube-ID table, construction
+  example queries, and an **On the horizon** note for the planned `price_index`
+  tool (IMPI / Baupreisindex via the DAM asset API).
+
+### Known findings
+- **PxWeb Gemeinde codes are not consistent across cubes.** In
+  `px-x-0904030000_106`/`_107` the value code IS the zero-padded BFS number
+  (`0261`); in `px-x-0904030000_105` it is an opaque sequential id (`160`) and
+  the BFS number appears only in the label (`......0261 Zürich`). The geo
+  resolver matches the label-embedded BFS number against each cube's own live
+  dimension values — matching on the value code would silently pick the wrong
+  commune.
+- **The Gemeinde-level building series was restructured at 2012/2013.** The
+  cubes named in the original scope (`px-x-0904030000_101`/`_104`) end in 2012;
+  the current series (`_105`/`_106`/`_107`, 2013–) has a
+  `Grossregion (<<) / Kanton (-) / Gemeinde (......)` dimension. Since the
+  default `since_year` is 2015, the tools query the current cubes and accept
+  `since_year >= 2013`.
+- **IMPI / Baupreisindex are not in STAT-TAB** — they are DAM assets
+  (`dam-api.bfs.admin.ch`) discovered via opendata.swiss (CKAN), which returns
+  **HTTP 403** to default User-Agents and mixes PDF/XLSX asset formats. Deferred
+  to a follow-up release (`price_index`) as the most fragile part of the surface.
+
 ## [0.3.0] - 2026-07-19
 
 ### Added

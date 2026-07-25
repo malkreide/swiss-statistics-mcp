@@ -13,7 +13,9 @@ import json
 import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
+import respx
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -1270,6 +1272,464 @@ class TestReferenceLayerValidation:
 
 
 # ---------------------------------------------------------------------------
+# Construction & real-estate tools (STAT-TAB theme 09)
+# ---------------------------------------------------------------------------
+
+_BFS_BASE = "https://www.pxweb.bfs.admin.ch/api/v1/de"
+_URL_106 = f"{_BFS_BASE}/px-x-0904030000_106/px-x-0904030000_106.px"
+_URL_105 = f"{_BFS_BASE}/px-x-0904030000_105/px-x-0904030000_105.px"
+_URL_205 = f"{_BFS_BASE}/px-x-0904010000_205/px-x-0904010000_205.px"
+
+_GEO_VAR = "Grossregion (<<) / Kanton (-) / Gemeinde (......)"
+
+# _106 exposes the BFS number AS the value code ('0261').
+_META_106 = {
+    "title": "Neu erstellte Gebäude mit Wohnungen nach ...",
+    "source": "BFS",
+    "variables": [
+        {
+            "code": _GEO_VAR,
+            "text": _GEO_VAR,
+            "values": ["CH", "ZH", "0261", "0002"],
+            "valueTexts": [
+                "Schweiz",
+                "- Kanton Zürich",
+                "......0261 Zürich",
+                "......0002 Affoltern am Albis",
+            ],
+        },
+        {
+            "code": "Gebäudetyp",
+            "text": "Gebäudetyp",
+            "values": ["0", "1", "2"],
+            "valueTexts": ["Gebäude mit Wohnungen - Total", "Einfamilienhaus", "Mehrfamilienhaus"],
+        },
+        {
+            "code": "Jahr",
+            "text": "Jahr",
+            "values": ["2013", "2014", "2015"],
+            "valueTexts": ["2013", "2014", "2015"],
+            "time": True,
+        },
+    ],
+}
+
+# _105 uses an OPAQUE sequential value code ('160'); the BFS number lives only
+# in the label ('......0261 Zürich'). This is the real cross-cube quirk.
+_META_105 = {
+    "title": "Neu erstellte Wohnungen nach ... Anzahl Zimmer ...",
+    "source": "BFS",
+    "variables": [
+        {
+            "code": _GEO_VAR,
+            "text": _GEO_VAR,
+            "values": ["0", "4", "160", "9"],
+            "valueTexts": [
+                "Schweiz",
+                "<< Zürich",
+                "......0261 Zürich",
+                "......0001 Aeugst am Albis",
+            ],
+        },
+        {
+            "code": "Anzahl Zimmer",
+            "text": "Anzahl Zimmer",
+            "values": ["0", "1", "2", "3", "4", "5", "6"],
+            "valueTexts": [
+                "Wohnungen - Total",
+                "1-Zimmer-Wohnung",
+                "2-Zimmer-Wohnung",
+                "3-Zimmer-Wohnung",
+                "4-Zimmer-Wohnung",
+                "5-Zimmer-Wohnung",
+                "6-Zimmer-Wohnung oder grösser",
+            ],
+        },
+        {
+            "code": "Jahr",
+            "text": "Jahr",
+            "values": ["2013", "2014", "2015"],
+            "valueTexts": ["2013", "2014", "2015"],
+            "time": True,
+        },
+    ],
+}
+
+_META_205 = {
+    "title": "Bauinvestitionen und Arbeitsvorrat nach ...",
+    "source": "BFS",
+    "variables": [
+        {
+            "code": _GEO_VAR,
+            "text": _GEO_VAR,
+            "values": ["CH", "R1", "ZH", "0261"],
+            "valueTexts": [
+                "Schweiz",
+                "<< Genferseeregion",
+                "- Kanton Zürich",
+                "......0261 Zürich",
+            ],
+        },
+        {
+            "code": "Art der Arbeiten",
+            "text": "Art der Arbeiten",
+            "values": ["0", "1", "2"],
+            "valueTexts": ["Art der Arbeiten - Total", "Neubau", "Umbau"],
+        },
+        {
+            "code": "Kategorie der Bauwerke",
+            "text": "Kategorie der Bauwerke",
+            "values": ["0", "900"],
+            "valueTexts": ["Kategorie der Bauwerke - Total", "Wohnen"],
+        },
+        {
+            "code": "Beobachtungseinheit",
+            "text": "Beobachtungseinheit",
+            "values": ["kost_j", "var_kost_j", "arbv_k", "var_arbv_k"],
+            "valueTexts": [
+                "Laufendes Jahr - Absolute Werte",
+                "Laufendes Jahr - Veränderungsraten",
+                "Folgejahr (Arbeitsvorrat) - Absolute Werte",
+                "Folgejahr (Arbeitsvorrat) - Veränderungsraten",
+            ],
+        },
+        {
+            "code": "Jahr",
+            "text": "Jahr",
+            "values": ["2014", "2015", "2016"],
+            "valueTexts": ["2014", "2015", "2016"],
+            "time": True,
+        },
+    ],
+}
+
+
+def _jsonstat2(ids, categories, values):
+    """Build a minimal json-stat2 payload from (dim, {code: label}) pairs."""
+    dimension = {}
+    size = []
+    for dim, cat in categories:
+        codes = list(cat.keys())
+        dimension[dim] = {
+            "label": dim,
+            "category": {
+                "index": {c: i for i, c in enumerate(codes)},
+                "label": dict(cat),
+            },
+        }
+        size.append(len(codes))
+    return {
+        "class": "dataset",
+        "label": "test",
+        "source": "BFS",
+        "updated": "2025-01-01",
+        "id": ids,
+        "size": size,
+        "dimension": dimension,
+        "value": values,
+    }
+
+
+def _resp_106():
+    return _jsonstat2(
+        [_GEO_VAR, "Gebäudetyp", "Jahr"],
+        [
+            (_GEO_VAR, {"0261": "......0261 Zürich"}),
+            ("Gebäudetyp", {"0": "Gebäude mit Wohnungen - Total"}),
+            ("Jahr", {"2013": "2013", "2014": "2014", "2015": "2015"}),
+        ],
+        [195, 153, 250],
+    )
+
+
+def _resp_105():
+    # room dim (7) × year dim (3): room-outer, year-inner.
+    rooms = {
+        "0": "Wohnungen - Total",
+        "1": "1-Zimmer-Wohnung",
+        "2": "2-Zimmer-Wohnung",
+        "3": "3-Zimmer-Wohnung",
+        "4": "4-Zimmer-Wohnung",
+        "5": "5-Zimmer-Wohnung",
+        "6": "6-Zimmer-Wohnung oder grösser",
+    }
+    values = (
+        [500, 520, 540]  # total
+        + [50, 55, 60]  # 1-room
+        + [80, 80, 80]  # 2-room
+        + [100, 110, 120]  # 3-room
+        + [120, 125, 130]  # 4-room
+        + [30, 25, 20]  # 5-room
+        + [20, 30, 30]  # 6+-room
+    )
+    return _jsonstat2(
+        [_GEO_VAR, "Anzahl Zimmer", "Jahr"],
+        [
+            (_GEO_VAR, {"160": "......0261 Zürich"}),
+            ("Anzahl Zimmer", rooms),
+            ("Jahr", {"2013": "2013", "2014": "2014", "2015": "2015"}),
+        ],
+        values,
+    )
+
+
+def _resp_205():
+    # Beobachtungseinheit (2) × Jahr (3): unit-outer, year-inner.
+    return _jsonstat2(
+        [_GEO_VAR, "Art der Arbeiten", "Kategorie der Bauwerke", "Beobachtungseinheit", "Jahr"],
+        [
+            (_GEO_VAR, {"ZH": "- Kanton Zürich"}),
+            ("Art der Arbeiten", {"0": "Art der Arbeiten - Total"}),
+            ("Kategorie der Bauwerke", {"0": "Kategorie der Bauwerke - Total"}),
+            (
+                "Beobachtungseinheit",
+                {
+                    "kost_j": "Laufendes Jahr - Absolute Werte",
+                    "arbv_k": "Folgejahr (Arbeitsvorrat) - Absolute Werte",
+                },
+            ),
+            ("Jahr", {"2014": "2014", "2015": "2015", "2016": "2016"}),
+        ],
+        [1000, 1100, 1200, 2000, 2100, 2200],
+    )
+
+
+class TestConstructionGeoResolver:
+    """The geo resolver must handle both cube coding schemes (BFS-as-code and
+    opaque-code-with-BFS-in-label) — the core PxWeb Gemeindecode quirk."""
+
+    def test_bfs_number_as_value_code(self):
+        from swiss_statistics_mcp.server import _resolve_municipality_geo
+
+        code, name = _resolve_municipality_geo(_META_106, _GEO_VAR, 261)
+        assert code == "0261"
+        assert name == "Zürich"
+
+    def test_opaque_code_with_bfs_in_label(self):
+        """Regression: _105 codes Zürich as '160'; the BFS number 261 appears
+        only in the label. Matching on the code would silently pick the wrong
+        commune."""
+        from swiss_statistics_mcp.server import _resolve_municipality_geo
+
+        code, name = _resolve_municipality_geo(_META_105, _GEO_VAR, 261)
+        assert code == "160"
+        assert name == "Zürich"
+
+    def test_unknown_bfs_returns_none(self):
+        from swiss_statistics_mcp.server import _resolve_municipality_geo
+
+        assert _resolve_municipality_geo(_META_106, _GEO_VAR, 9998) == (None, None)
+
+    def test_investment_geo_by_level(self):
+        from swiss_statistics_mcp.server import _resolve_investment_geo
+
+        assert _resolve_investment_geo(_META_205, "kanton", "ZH") == ("ZH", "Kanton Zürich")
+        assert _resolve_investment_geo(_META_205, "gemeinde", "261") == ("0261", "Zürich")
+        assert _resolve_investment_geo(_META_205, "grossregion", "R1") == (
+            "R1",
+            "Genferseeregion",
+        )
+
+    def test_investment_geo_name_substring_fallback(self):
+        from swiss_statistics_mcp.server import _resolve_investment_geo
+
+        code, name = _resolve_investment_geo(_META_205, "grossregion", "Genfersee")
+        assert code == "R1"
+
+
+class TestConstructionActivity:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_happy_path_series_with_rooms(self):
+        from swiss_statistics_mcp.server import (
+            ConstructionActivityInput,
+            bfs_construction_activity,
+        )
+
+        respx.get(_URL_106).mock(return_value=httpx.Response(200, json=_META_106))
+        respx.post(_URL_106).mock(return_value=httpx.Response(200, json=_resp_106()))
+        respx.get(_URL_105).mock(return_value=httpx.Response(200, json=_META_105))
+        respx.post(_URL_105).mock(return_value=httpx.Response(200, json=_resp_105()))
+
+        result = await bfs_construction_activity(
+            ConstructionActivityInput(municipality_bfs=261, since_year=2013)
+        )
+        data = result.model_dump(exclude_none=True)
+
+        assert data["municipality_name"] == "Zürich"
+        assert data["table_ids"] == ["px-x-0904030000_106", "px-x-0904030000_105"]
+        assert len(data["years"]) == 3
+        y0 = data["years"][0]
+        assert y0["year"] == 2013
+        assert y0["new_buildings"] == 195
+        assert y0["new_dwellings"] == 500
+        assert y0["dwellings_by_rooms"]["1-Zimmer-Wohnung"] == 50
+        assert "Wohnungen - Total" not in y0["dwellings_by_rooms"]  # total excluded
+        assert data["provenance"] == "live_api"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_since_year_filters_earlier_years(self):
+        from swiss_statistics_mcp.server import (
+            ConstructionActivityInput,
+            bfs_construction_activity,
+        )
+
+        respx.get(_URL_106).mock(return_value=httpx.Response(200, json=_META_106))
+        respx.post(_URL_106).mock(return_value=httpx.Response(200, json=_resp_106()))
+        respx.get(_URL_105).mock(return_value=httpx.Response(200, json=_META_105))
+        respx.post(_URL_105).mock(return_value=httpx.Response(200, json=_resp_105()))
+
+        result = await bfs_construction_activity(
+            ConstructionActivityInput(municipality_bfs=261, since_year=2015)
+        )
+        data = result.model_dump(exclude_none=True)
+        assert [y["year"] for y in data["years"]] == [2015]
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_unknown_commune_graceful(self):
+        from swiss_statistics_mcp.server import (
+            ConstructionActivityInput,
+            bfs_construction_activity,
+        )
+
+        respx.get(_URL_106).mock(return_value=httpx.Response(200, json=_META_106))
+
+        result = await bfs_construction_activity(
+            ConstructionActivityInput(municipality_bfs=9998, since_year=2013)
+        )
+        data = result.model_dump(exclude_none=True)
+        assert "error" in data and "hint" in data
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_bad_query_400_is_sanitized(self):
+        from swiss_statistics_mcp.server import (
+            ConstructionActivityInput,
+            bfs_construction_activity,
+        )
+
+        respx.get(_URL_106).mock(return_value=httpx.Response(200, json=_META_106))
+        respx.post(_URL_106).mock(return_value=httpx.Response(400, text="Bad Request"))
+
+        result = await bfs_construction_activity(
+            ConstructionActivityInput(municipality_bfs=261, since_year=2013)
+        )
+        data = result.model_dump(exclude_none=True)
+        assert "400" in data["error"]
+        assert "hint" in data
+
+
+class TestConstructionInvestment:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_happy_path_investment_and_arbeitsvorrat(self):
+        from swiss_statistics_mcp.server import (
+            ConstructionInvestmentInput,
+            bfs_construction_investment,
+        )
+
+        respx.get(_URL_205).mock(return_value=httpx.Response(200, json=_META_205))
+        respx.post(_URL_205).mock(return_value=httpx.Response(200, json=_resp_205()))
+
+        result = await bfs_construction_investment(
+            ConstructionInvestmentInput(level="kanton", code="ZH", since_year=2014)
+        )
+        data = result.model_dump(exclude_none=True)
+
+        assert data["region_name"] == "Kanton Zürich"
+        assert data["unit"] == "1000 CHF"
+        assert len(data["years"]) == 3
+        y0 = data["years"][0]
+        assert y0["year"] == 2014
+        assert y0["investment"] == 1000
+        assert y0["work_on_hand"] == 2000  # Arbeitsvorrat, the leading indicator
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_unknown_code_graceful(self):
+        from swiss_statistics_mcp.server import (
+            ConstructionInvestmentInput,
+            bfs_construction_investment,
+        )
+
+        respx.get(_URL_205).mock(return_value=httpx.Response(200, json=_META_205))
+
+        result = await bfs_construction_investment(
+            ConstructionInvestmentInput(level="kanton", code="XX")
+        )
+        data = result.model_dump(exclude_none=True)
+        assert "error" in data and "hint" in data
+
+
+class TestConstructionRetry:
+    """The construction tools inherit the shared transient-error retry."""
+
+    @pytest.fixture(autouse=True)
+    def _fast_retries(self, monkeypatch):
+        import swiss_statistics_mcp.server as srv
+
+        monkeypatch.setattr(srv, "RETRY_WAIT_INITIAL", 0.001)
+        monkeypatch.setattr(srv, "RETRY_WAIT_MAX", 0.002)
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_503_on_data_post_then_succeeds(self):
+        from swiss_statistics_mcp.server import (
+            ConstructionActivityInput,
+            bfs_construction_activity,
+        )
+
+        respx.get(_URL_106).mock(return_value=httpx.Response(200, json=_META_106))
+        respx.get(_URL_105).mock(return_value=httpx.Response(200, json=_META_105))
+        respx.post(_URL_105).mock(return_value=httpx.Response(200, json=_resp_105()))
+        post_106 = respx.post(_URL_106).mock(
+            side_effect=[
+                httpx.Response(503),
+                httpx.Response(200, json=_resp_106()),
+            ]
+        )
+
+        result = await bfs_construction_activity(
+            ConstructionActivityInput(municipality_bfs=261, since_year=2013)
+        )
+        data = result.model_dump(exclude_none=True)
+        assert data.get("error") is None
+        assert len(data["years"]) == 3
+        assert post_106.call_count == 2  # retried once after the 503
+
+
+class TestConstructionValidation:
+    def test_bad_level_rejected(self):
+        from swiss_statistics_mcp.server import ConstructionInvestmentInput
+
+        with pytest.raises(Exception):
+            ConstructionInvestmentInput(level="planet", code="ZH")
+
+    def test_municipality_bfs_range(self):
+        from swiss_statistics_mcp.server import ConstructionActivityInput
+
+        with pytest.raises(Exception):
+            ConstructionActivityInput(municipality_bfs=0)
+
+    def test_since_year_lower_bound(self):
+        from swiss_statistics_mcp.server import ConstructionActivityInput
+
+        with pytest.raises(Exception):
+            ConstructionActivityInput(municipality_bfs=261, since_year=2010)
+
+    def test_defaults(self):
+        from swiss_statistics_mcp.server import (
+            ConstructionActivityInput,
+            ConstructionInvestmentInput,
+        )
+
+        assert ConstructionActivityInput(municipality_bfs=261).since_year == 2015
+        assert ConstructionInvestmentInput(level="gemeinde", code="261").since_year == 2015
+
+
+# ---------------------------------------------------------------------------
 # Live smoke tests (require network – run separately)
 # ---------------------------------------------------------------------------
 
@@ -1350,3 +1810,31 @@ class TestLiveAPI:
         data = result.model_dump(exclude_none=True)
         assert data["total_matches"] > 0
         assert data["series"][0]["xlsx_url"].endswith(".xlsx")
+
+    @pytest.mark.asyncio
+    async def test_live_construction_activity_zurich(self):
+        from swiss_statistics_mcp.server import (
+            ConstructionActivityInput,
+            bfs_construction_activity,
+        )
+        result = await bfs_construction_activity(
+            ConstructionActivityInput(municipality_bfs=261, since_year=2015)
+        )
+        data = result.model_dump(exclude_none=True)
+        assert data["municipality_name"] == "Zürich"
+        assert len(data["years"]) > 0
+        # room-count breakdown must resolve despite _105's opaque geo codes
+        assert data["years"][0]["dwellings_by_rooms"]
+
+    @pytest.mark.asyncio
+    async def test_live_construction_investment_canton_zh(self):
+        from swiss_statistics_mcp.server import (
+            ConstructionInvestmentInput,
+            bfs_construction_investment,
+        )
+        result = await bfs_construction_investment(
+            ConstructionInvestmentInput(level="kanton", code="ZH", since_year=2015)
+        )
+        data = result.model_dump(exclude_none=True)
+        assert len(data["years"]) > 0
+        assert data["years"][0]["work_on_hand"] is not None
