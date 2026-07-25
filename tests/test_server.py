@@ -217,39 +217,57 @@ class TestFeaturedDatasets:
 # Integration tests: tool invocations (mocked HTTP)
 # ---------------------------------------------------------------------------
 
-class TestBfsListThemes:
+class TestBfsBrowseCatalogThemes:
+    """`bfs_browse_catalog` with no theme_code → themes mode."""
+
     @pytest.mark.asyncio
     async def test_returns_all_themes(self):
-        from swiss_statistics_mcp.server import ListThemesInput, bfs_list_themes
+        from swiss_statistics_mcp.server import BrowseCatalogInput, bfs_browse_catalog
 
         with patch(
             "swiss_statistics_mcp.server._get",
             new_callable=AsyncMock,
             return_value=_mock_all_dbs_response(),
         ):
-            result = await bfs_list_themes(ListThemesInput(lang="de"))
+            result = await bfs_browse_catalog(BrowseCatalogInput(lang="de"))
             data = result.model_dump(exclude_none=True)
 
+        assert data["mode"] == "themes"
         assert "themes" in data
         assert len(data["themes"]) == 21
         assert data["total_datasets"] == len(_mock_all_dbs_response())
 
     @pytest.mark.asyncio
     async def test_theme_codes_present(self):
-        from swiss_statistics_mcp.server import ListThemesInput, bfs_list_themes
+        from swiss_statistics_mcp.server import BrowseCatalogInput, bfs_browse_catalog
 
         with patch(
             "swiss_statistics_mcp.server._get",
             new_callable=AsyncMock,
             return_value=_mock_all_dbs_response(),
         ):
-            result = await bfs_list_themes(ListThemesInput(lang="de"))
+            result = await bfs_browse_catalog(BrowseCatalogInput(lang="de"))
             data = result.model_dump(exclude_none=True)
 
         codes = [t["code"] for t in data["themes"]]
         assert "15" in codes  # Bildung
         assert "01" in codes  # Bevölkerung
         assert "17" in codes  # Politik
+
+    @pytest.mark.asyncio
+    async def test_unknown_theme_code_errors(self):
+        from swiss_statistics_mcp.server import BrowseCatalogInput, bfs_browse_catalog
+
+        with patch(
+            "swiss_statistics_mcp.server._get",
+            new_callable=AsyncMock,
+            return_value=_mock_all_dbs_response(),
+        ):
+            result = await bfs_browse_catalog(BrowseCatalogInput(theme_code="99"))
+            data = result.model_dump(exclude_none=True)
+
+        assert data["mode"] == "tables"
+        assert "error" in data and "hint" in data
 
 
 class TestBfsGetTableMetadata:
@@ -542,9 +560,13 @@ class TestInputValidation:
             ListThemesInput(lang="xx")
 
     def test_invalid_theme_code_rejected(self):
-        from swiss_statistics_mcp.server import ListTablesByThemeInput
+        from swiss_statistics_mcp.server import BrowseCatalogInput
         with pytest.raises(Exception):
-            ListTablesByThemeInput(theme_code="abc")
+            BrowseCatalogInput(theme_code="abc")
+
+    def test_theme_code_optional(self):
+        from swiss_statistics_mcp.server import BrowseCatalogInput
+        assert BrowseCatalogInput().theme_code is None
 
     def test_short_search_query_rejected(self):
         from swiss_statistics_mcp.server import SearchTablesInput
@@ -735,7 +757,7 @@ class TestMetadataCache:
 
 
 class TestFanoutConcurrency:
-    """`bfs_list_tables_by_theme` fans out metadata fetches in parallel
+    """`bfs_browse_catalog` (tables mode) fans out metadata fetches in parallel
     bounded by FANOUT_CONCURRENCY."""
 
     @pytest.mark.asyncio
@@ -747,8 +769,8 @@ class TestFanoutConcurrency:
         import time as time_mod
 
         from swiss_statistics_mcp.server import (
-            ListTablesByThemeInput,
-            bfs_list_tables_by_theme,
+            BrowseCatalogInput,
+            bfs_browse_catalog,
         )
 
         async def slow_meta(dbid: str, lang: str) -> dict:
@@ -759,7 +781,7 @@ class TestFanoutConcurrency:
                 "variables": [{"code": "Kanton"}],
             }
 
-        # The first `_get` call inside `bfs_list_tables_by_theme` fetches
+        # The first `_get` call inside `bfs_browse_catalog` fetches
         # the database index; later fan-out goes through the cached helper.
         async def fake_get(url):
             return _mock_all_dbs_response()
@@ -770,12 +792,13 @@ class TestFanoutConcurrency:
         )
 
         t0 = time_mod.monotonic()
-        result = await bfs_list_tables_by_theme(
-            ListTablesByThemeInput(theme_code="15", limit=5)
+        result = await bfs_browse_catalog(
+            BrowseCatalogInput(theme_code="15", limit=5)
         )
         elapsed = time_mod.monotonic() - t0
 
         data = result.model_dump(exclude_none=True)
+        assert data["mode"] == "tables"
         assert isinstance(data.get("tables"), list)
         # 5× 50ms parallel ≈ 50ms; allow generous headroom for CI noise.
         assert elapsed < 0.20, f"expected parallel fan-out, took {elapsed:.3f}s"
@@ -860,15 +883,15 @@ class TestToolLogging:
     async def test_emits_start_and_end_events(self, caplog):
         from swiss_statistics_mcp.server import (
             _LOGGER,
-            ListThemesInput,
-            bfs_list_themes,
+            BrowseCatalogInput,
+            bfs_browse_catalog,
         )
 
         with caplog.at_level(logging.INFO, logger="swiss_statistics_mcp"):
             # Ensure our logger propagates to caplog for assertion purposes
             _LOGGER.propagate = True
             try:
-                await bfs_list_themes(ListThemesInput())
+                await bfs_browse_catalog(BrowseCatalogInput())
             finally:
                 _LOGGER.propagate = False
 
@@ -887,7 +910,7 @@ class TestToolLogging:
         assert len(ends) == 1, f"expected 1 tool_end, got {events}"
 
         start, end = starts[0], ends[0]
-        assert start["tool"] == "bfs_list_themes"
+        assert start["tool"] == "bfs_browse_catalog"
         assert start["rid"] == end["rid"]  # correlation id pairs start/end
         assert len(start["rid"]) == 8
         assert end["status"] == "ok"
@@ -1977,11 +2000,20 @@ class TestLiveAPI:
     """Real API calls. Run with: pytest -m live"""
 
     @pytest.mark.asyncio
-    async def test_live_list_themes(self):
-        from swiss_statistics_mcp.server import ListThemesInput, bfs_list_themes
-        result = await bfs_list_themes(ListThemesInput(lang="de"))
+    async def test_live_browse_catalog_themes(self):
+        from swiss_statistics_mcp.server import BrowseCatalogInput, bfs_browse_catalog
+        result = await bfs_browse_catalog(BrowseCatalogInput(lang="de"))
         data = result.model_dump(exclude_none=True)
+        assert data["mode"] == "themes"
         assert data["total_datasets"] > 600
+
+    @pytest.mark.asyncio
+    async def test_live_browse_catalog_tables(self):
+        from swiss_statistics_mcp.server import BrowseCatalogInput, bfs_browse_catalog
+        result = await bfs_browse_catalog(BrowseCatalogInput(theme_code="15", limit=3))
+        data = result.model_dump(exclude_none=True)
+        assert data["mode"] == "tables"
+        assert data["returned"] >= 1
 
     @pytest.mark.asyncio
     async def test_live_teacher_metadata(self):

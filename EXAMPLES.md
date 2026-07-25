@@ -74,7 +74,7 @@ MCP-Enthusiast:innen, Forscher:innen, Prompt Engineers, öffentliche Verwaltung
 
 «Liste mir alle Tabellen aus dem Bereich 'Gesundheit' (Code 14) auf.»
 
-→ `bfs_list_tables_by_theme(theme_code="14")`
+→ `bfs_browse_catalog(theme_code="14")`
 
 Warum nützlich: Erleichtert Entwicklern den strukturierten Zugriff auf spezifische Datenbereiche zur automatisierten Weiterverarbeitung.
 
@@ -94,7 +94,7 @@ Warum nützlich: Demonstriert die Leistungsfähigkeit vernetzter MCP-Server, ind
 
 | Ich möchte… | Tool(s) | Auth nötig? |
 |-------------|---------|-------------|
-| **eine Übersicht über statistische Themen erhalten** | `bfs_list_themes` | Nein |
+| **eine Übersicht über statistische Themen erhalten** | `bfs_browse_catalog` (ohne `theme_code`) | Nein |
 | **nach Datensätzen zu einem bestimmten Begriff suchen** | `bfs_search_tables` | Nein |
 | **herausfinden, welche Filter eine Tabelle anbietet** | `bfs_get_table_metadata` | Nein |
 | **die eigentlichen statistischen Daten abrufen** | `bfs_get_data` | Nein |
