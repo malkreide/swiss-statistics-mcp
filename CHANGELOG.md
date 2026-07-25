@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-25
+
+### Changed (BREAKING)
+- **Consolidated `bfs_list_themes` + `bfs_list_tables_by_theme` into a single
+  `bfs_browse_catalog(theme_code=None, lang="de", limit=20)`** → `BrowseCatalogResult`.
+  This brings the server back to **15 tools** (from 16), under the portfolio's
+  15-tool guideline.
+    - Omit `theme_code` → **themes mode**: all 21 statistical themes with codes
+      and per-theme dataset counts (`mode="themes"`, `themes`, `total_datasets`).
+    - Provide `theme_code` → **tables mode**: the datasets in that theme
+      (`mode="tables"`, `tables`, `theme_name`, `total_in_theme`, `returned`),
+      with the same bounded parallel metadata fan-out as before.
+  - **Migration:** `bfs_list_themes(lang=..)` → `bfs_browse_catalog(lang=..)`;
+    `bfs_list_tables_by_theme(theme_code=.., lang=.., limit=..)` →
+    `bfs_browse_catalog(theme_code=.., lang=.., limit=..)`. The result envelope
+    is a superset of the two old models, keyed by `mode`.
+  - Removed models `ListThemesResult` and `ListTablesByThemeResult` (replaced by
+    `BrowseCatalogResult`) and `ListTablesByThemeInput` (replaced by
+    `BrowseCatalogInput`). Alpha (0.x) allows breaking tool changes between minor
+    versions.
+- Internal hints, the server workflow instructions, README (EN + DE), and
+  EXAMPLES updated to reference `bfs_browse_catalog`.
+
 ## [0.5.0] - 2026-07-25
 
 ### Added

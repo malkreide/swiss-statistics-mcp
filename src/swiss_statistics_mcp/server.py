@@ -662,13 +662,14 @@ class ListThemesInput(BaseModel):
     )
 
 
-class ListTablesByThemeInput(BaseModel):
+class BrowseCatalogInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    theme_code: str = Field(
-        ...,
+    theme_code: str | None = Field(
+        default=None,
         description=(
-            "2-digit BFS theme code, e.g. '15' for Bildung, '01' for Bevölkerung. "
-            "Use bfs_list_themes to see all codes."
+            "Optional 2-digit BFS theme code, e.g. '15' for Bildung, '01' for "
+            "Bevölkerung. Omit to list all 21 themes with their codes and dataset "
+            "counts; provide a code to list the datasets within that theme."
         ),
         pattern="^\\d{2}$",
     )
@@ -679,7 +680,7 @@ class ListTablesByThemeInput(BaseModel):
     )
     limit: int = Field(
         default=20,
-        description="Maximum number of tables to return",
+        description="Maximum number of tables to return (theme mode only)",
         ge=1,
         le=100,
     )
@@ -720,7 +721,7 @@ class GetTableMetadataInput(BaseModel):
         ...,
         description=(
             "BFS table/database ID, e.g. 'px-x-1504000000_173'. "
-            "Obtain from bfs_search_tables or bfs_list_tables_by_theme."
+            "Obtain from bfs_search_tables or bfs_browse_catalog."
         ),
         pattern=BFS_TABLE_ID_PATTERN,
     )
@@ -923,23 +924,22 @@ class FeaturedDatasetEntry(BaseModel):
     schulamt_relevanz: str | None = None
 
 
-class ListThemesResult(BaseModel):
+class BrowseCatalogResult(BaseModel):
     error: str | None = None
     hint: str | None = None
+    mode: str | None = None  # 'themes' | 'tables'
+    # themes mode
     total_datasets: int | None = None
     themes: list[ThemeEntry] | None = None
-    note: str | None = None
-
-
-class ListTablesByThemeResult(BaseModel):
-    error: str | None = None
-    hint: str | None = None
+    # tables mode
     theme_code: str | None = None
     theme_name: str | None = None
     total_in_theme: int | None = None
     returned: int | None = None
     tables: list[TableEntry] | None = None
+    # shared
     next_step: str | None = None
+    note: str | None = None
 
 
 class SearchTablesResult(BaseModel):
@@ -1262,8 +1262,9 @@ mcp = FastMCP(
     instructions=(
         "Access Swiss Federal Statistical Office (BFS/OFS/UST) data via STAT-TAB. "
         "Available: 682 datasets across 21 themes. No API key required. "
-        "Workflow: (1) bfs_list_themes to see themes, (2) bfs_search_tables or "
-        "bfs_list_tables_by_theme to find datasets, (3) bfs_get_table_metadata to "
+        "Workflow: (1) bfs_browse_catalog (no theme_code) to see themes, (2) "
+        "bfs_browse_catalog(theme_code=..) or bfs_search_tables to find datasets, "
+        "(3) bfs_get_table_metadata to "
         "understand variables and valid filter values, (4) bfs_get_data to retrieve "
         "actual statistics. Use bfs_education_stats for Schulamt-relevant shortcuts. "
         "Reference layer: lookup_commune / list_communes / resolve_historical_commune "
@@ -1280,112 +1281,73 @@ mcp = FastMCP(
 
 
 # ---------------------------------------------------------------------------
-# Tool: List themes
+# Tool: Browse catalog (themes + tables by theme)
 # ---------------------------------------------------------------------------
 
 @mcp.tool(
-    name="bfs_list_themes",
+    name="bfs_browse_catalog",
     annotations={
-        "title": "BFS Statistical Themes",
+        "title": "Browse BFS Catalog (Themes & Tables)",
         "readOnlyHint": True,
         "destructiveHint": False,
         "idempotentHint": True,
         "openWorldHint": False,
     },
 )
-@_logged_tool("bfs_list_themes")
-async def bfs_list_themes(params: ListThemesInput) -> ListThemesResult:
-    """List all 21 BFS statistical themes with their codes and dataset counts.
+@_logged_tool("bfs_browse_catalog")
+async def bfs_browse_catalog(params: BrowseCatalogInput) -> BrowseCatalogResult:
+    """Browse the BFS catalogue: the theme list, or the datasets within a theme.
 
-    Returns the complete taxonomy of Swiss federal statistics. Each theme has
-    a 2-digit code used to filter datasets with bfs_list_tables_by_theme.
+    Two modes in one tool (`mode` in the result says which ran):
+    - Omit `theme_code` → list all 21 statistical themes with their 2-digit
+      codes and dataset counts (the taxonomy of Swiss federal statistics).
+    - Provide `theme_code` → list the datasets in that theme (table IDs +
+      titles) to feed bfs_get_table_metadata / bfs_get_data.
 
     Args:
-        params (ListThemesInput):
+        params (BrowseCatalogInput):
+            - theme_code (str | None): 2-digit theme code, e.g. '15' for Bildung;
+              omit for the theme list
             - lang (str): Language code ('de', 'fr', 'it', 'en')
+            - limit (int): Max tables to return (theme mode; default 20)
 
     Returns:
-        ListThemesResult with theme codes, names, dataset counts per theme.
-        On error, `error` and `hint` are set and `themes` is None.
+        BrowseCatalogResult. `mode='themes'` populates `themes`; `mode='tables'`
+        populates `tables` plus theme metadata. On error, `error`/`hint` are set.
     """
     try:
         url = f"{BFS_API_BASE}/{params.lang}/"
         all_dbs = await _get(url)
 
-        # Count tables per theme
-        theme_counts: dict[str, int] = {code: 0 for code in BFS_THEMES}
-        for db in all_dbs:
-            code = _theme_code_from_dbid(db["dbid"])
-            if code in theme_counts:
-                theme_counts[code] += 1
+        if params.theme_code is None:
+            # --- themes mode: taxonomy + per-theme dataset counts ---
+            theme_counts: dict[str, int] = {code: 0 for code in BFS_THEMES}
+            for db in all_dbs:
+                code = _theme_code_from_dbid(db["dbid"])
+                if code in theme_counts:
+                    theme_counts[code] += 1
 
-        themes = [
-            ThemeEntry(
-                code=code,
-                name=name,
-                dataset_count=theme_counts.get(code, 0),
-                filter_hint=f"Use theme_code='{code}' in bfs_list_tables_by_theme",
+            themes = [
+                ThemeEntry(
+                    code=code,
+                    name=name,
+                    dataset_count=theme_counts.get(code, 0),
+                    filter_hint=f"Use theme_code='{code}' in bfs_browse_catalog",
+                )
+                for code, name in BFS_THEMES.items()
+            ]
+
+            return BrowseCatalogResult(
+                mode="themes",
+                total_datasets=len(all_dbs),
+                themes=themes,
+                note=(
+                    "Use bfs_browse_catalog(theme_code='15') for Bildung, "
+                    "bfs_search_tables(query='Lehrpersonen') for keyword search."
+                ),
             )
-            for code, name in BFS_THEMES.items()
-        ]
 
-        return ListThemesResult(
-            total_datasets=len(all_dbs),
-            themes=themes,
-            note=(
-                "Use bfs_list_tables_by_theme(theme_code='15') for Bildung, "
-                "bfs_search_tables(query='Lehrpersonen') for keyword search."
-            ),
-        )
-    except httpx.HTTPStatusError as e:
-        return ListThemesResult(
-            error=f"API-Fehler {e.response.status_code}",
-            hint="BFS STAT-TAB API nicht erreichbar. Bitte später nochmals versuchen.",
-        )
-    except Exception:
-        _LOGGER.exception("bfs_list_themes failed")
-        return ListThemesResult(
-            error="Interner Fehler beim Laden der Themen.",
-            hint="Bitte erneut versuchen.",
-        )
-
-
-# ---------------------------------------------------------------------------
-# Tool: List tables by theme
-# ---------------------------------------------------------------------------
-
-@mcp.tool(
-    name="bfs_list_tables_by_theme",
-    annotations={
-        "title": "BFS Tables by Theme",
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False,
-    },
-)
-@_logged_tool("bfs_list_tables_by_theme")
-async def bfs_list_tables_by_theme(params: ListTablesByThemeInput) -> ListTablesByThemeResult:
-    """List available statistical tables for a specific BFS theme.
-
-    Returns table IDs and titles for a given theme code. Use the returned
-    table_id values with bfs_get_table_metadata and bfs_get_data.
-
-    Args:
-        params (ListTablesByThemeInput):
-            - theme_code (str): 2-digit theme code, e.g. '15' for Bildung
-            - lang (str): Language code
-            - limit (int): Max tables to return (default 20)
-
-    Returns:
-        ListTablesByThemeResult with the matching `tables` list. On error,
-        `error` and `hint` are set and `tables` is None.
-    """
-    try:
-        url = f"{BFS_API_BASE}/{params.lang}/"
-        all_dbs = await _get(url)
-
-        # Filter by theme
+        # --- tables mode: datasets within one theme ---
         theme_dbs = [
             db for db in all_dbs
             if _theme_code_from_dbid(db["dbid"]) == params.theme_code
@@ -1393,9 +1355,14 @@ async def bfs_list_tables_by_theme(params: ListTablesByThemeInput) -> ListTables
 
         if not theme_dbs:
             available = list(BFS_THEMES.keys())
-            return ListTablesByThemeResult(
+            return BrowseCatalogResult(
+                mode="tables",
+                theme_code=params.theme_code,
                 error=f"Kein Thema mit Code '{params.theme_code}' gefunden.",
-                hint=f"Verfügbare Codes: {available}. Verwende bfs_list_themes für die vollständige Liste.",
+                hint=(
+                    f"Verfügbare Codes: {available}. Rufe bfs_browse_catalog "
+                    "ohne theme_code für die vollständige Liste."
+                ),
             )
 
         theme_name = BFS_THEMES.get(params.theme_code, params.theme_code)
@@ -1425,7 +1392,8 @@ async def bfs_list_tables_by_theme(params: ListTablesByThemeInput) -> ListTables
 
         tables = await asyncio.gather(*(fetch_one(dbid) for dbid in selected))
 
-        return ListTablesByThemeResult(
+        return BrowseCatalogResult(
+            mode="tables",
             theme_code=params.theme_code,
             theme_name=theme_name,
             total_in_theme=len(theme_dbs),
@@ -1437,11 +1405,14 @@ async def bfs_list_tables_by_theme(params: ListTablesByThemeInput) -> ListTables
             ),
         )
     except httpx.HTTPStatusError as e:
-        return ListTablesByThemeResult(error=f"API-Fehler {e.response.status_code}")
+        return BrowseCatalogResult(
+            error=f"API-Fehler {e.response.status_code}",
+            hint="BFS STAT-TAB API nicht erreichbar. Bitte später nochmals versuchen.",
+        )
     except Exception:
-        _LOGGER.exception("bfs_list_tables_by_theme failed")
-        return ListTablesByThemeResult(
-            error="Interner Fehler beim Laden der Tabellen-Liste.",
+        _LOGGER.exception("bfs_browse_catalog failed")
+        return BrowseCatalogResult(
+            error="Interner Fehler beim Laden des Katalogs.",
             hint="Bitte erneut versuchen.",
         )
 
@@ -1624,7 +1595,7 @@ async def bfs_get_table_metadata(params: GetTableMetadataInput) -> TableMetadata
         if e.response.status_code == 404:
             return TableMetadataResult(
                 error=f"Tabelle '{params.table_id}' nicht gefunden.",
-                hint="Verwende bfs_search_tables oder bfs_list_tables_by_theme um gültige IDs zu finden.",
+                hint="Verwende bfs_search_tables oder bfs_browse_catalog um gültige IDs zu finden.",
             )
         return TableMetadataResult(error=f"API-Fehler {e.response.status_code}")
     except Exception:

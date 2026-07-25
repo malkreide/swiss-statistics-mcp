@@ -4,7 +4,7 @@
 
 # 📊 swiss-statistics-mcp
 
-![Version](https://img.shields.io/badge/version-0.5.0-blue)
+![Version](https://img.shields.io/badge/version-0.6.0-blue)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-purple)](https://modelcontextprotocol.io/)
@@ -53,7 +53,7 @@ Breaking Changes siehe [CHANGELOG.md](./CHANGELOG.md).
 
 ## Funktionen
 
-- 📊 **16 Tools**: 9 über 21 statistische Themengebiete (682 Datensätze) + eine 4-Tool-Referenzschicht (Gemeinden & Historik) + 2 Tools für Bau- und Immobilienstatistik + ein Preisindex-Tool
+- 📊 **15 Tools**: 8 über 21 statistische Themengebiete (682 Datensätze) + eine 4-Tool-Referenzschicht (Gemeinden & Historik) + 2 Tools für Bau- und Immobilienstatistik + ein Preisindex-Tool
 - 🔍 **Volltextsuche** über den gesamten BFS-Datenkatalog
 - 🎓 **Convenience-Tools** für Bildungsstatistik und Bevölkerungsdaten
 - 🏗️ **Baustatistik** — neu erstellte Gebäude/Wohnungen und Bauinvestitionen inkl. Arbeitsvorrat als Frühindikator
@@ -215,8 +215,7 @@ für maschinen-lesbare Trunkierungs-Erkennung.
 
 | Tool | Result-Type |
 |------|-------------|
-| `bfs_list_themes` | `ListThemesResult` |
-| `bfs_list_tables_by_theme` | `ListTablesByThemeResult` |
+| `bfs_browse_catalog` | `BrowseCatalogResult` |
 | `bfs_search_tables` | `SearchTablesResult` |
 | `bfs_get_table_metadata` | `TableMetadataResult` |
 | `bfs_get_data` | `DataTableResult` |
@@ -241,8 +240,7 @@ Die Ergebnisse der Referenzschicht führen zusätzlich `source` (Quellenangabe) 
 | Tool | Beschreibung |
 |------|-------------|
 | `bfs_featured_datasets` | Kuratierte Liste hochrelevanter Datensätze (Schwerpunkt Bildung und Demografie) |
-| `bfs_list_themes` | Alle 21 BFS-Themen mit Anzahl verfügbarer Datensätze |
-| `bfs_list_tables_by_theme` | Alle Tabellen eines Themas (z.B. `"15"` = Bildung und Wissenschaft) |
+| `bfs_browse_catalog` | Katalog durchsuchen: alle 21 Themen (ohne `theme_code`) oder alle Tabellen eines Themas (z.B. `theme_code="15"` = Bildung und Wissenschaft) |
 | `bfs_search_tables` | Freitextsuche über den gesamten Datenkatalog (682 Datensätze) |
 | `bfs_get_table_metadata` | Variablen, Ausprägungen und Metadaten einer spezifischen Tabelle |
 | `bfs_get_data` | Datenabruf mit optionalen Filtern nach Dimensionen und Werten |
@@ -325,7 +323,7 @@ Vier dieser Tools bilden die **Referenzschicht** des Portfolios (siehe [Join Key
 │   Claude / KI   │────▶│  Swiss Statistics MCP          │────▶│  BFS STAT-TAB            │
 │   (MCP Host)    │◀────│  (MCP Server)                │◀────│  PxWeb API v1            │
 └─────────────────┘     │                              │     └──────────────────────────┘
-                        │  16 Tools                    │
+                        │  15 Tools                    │
                         │  + Gemeinde-/Historik-Ref    │
                         │  + Baustatistik (Thema 09)   │
                         │  + Preisindizes (DAM/CKAN)   │
@@ -373,7 +371,7 @@ Die Referenzschicht existiert, damit Daten verschiedener Server des [Swiss Publi
 swiss-statistics-mcp/
 ├── src/swiss_statistics_mcp/
 │   ├── __init__.py              # Package
-│   └── server.py                # 16 Tools
+│   └── server.py                # 15 Tools
 ├── tests/
 │   └── test_server.py           # Unit + Integrationstests (gemockt)
 ├── .github/workflows/ci.yml     # GitHub Actions (Python 3.11/3.12/3.13)
@@ -396,9 +394,9 @@ Der Server schreibt pro Tool-Call **eine JSON-Log-Zeile** auf stderr:
 
 ```jsonc
 {"ts": "2026-05-20T04:02:28", "level": "INFO", "logger": "swiss_statistics_mcp",
- "event": "tool_start", "tool": "bfs_list_themes", "rid": "1091cb73", "params_keys": ["lang"]}
+ "event": "tool_start", "tool": "bfs_browse_catalog", "rid": "1091cb73", "params_keys": ["theme_code", "lang", "limit"]}
 {"ts": "2026-05-20T04:02:28", "level": "INFO", "logger": "swiss_statistics_mcp",
- "event": "tool_end", "tool": "bfs_list_themes", "rid": "1091cb73", "status": "ok", "duration_ms": 303}
+ "event": "tool_end", "tool": "bfs_browse_catalog", "rid": "1091cb73", "status": "ok", "duration_ms": 303}
 ```
 
 - `rid` — 8-Zeichen-Correlation-ID, verbindet `tool_start` und `tool_end` desselben Calls
@@ -426,8 +424,8 @@ Der Server absorbiert transiente BFS-API-Aussetzer, bevor sie das LLM erreichen:
 - **Metadaten-Cache** — Tabellen-Metadaten (Variablen, Wertebereiche,
   last_updated) werden in-memory pro `(table_id, lang)` für 1h gecacht.
   Erster Call wärmt den Cache, Folge-Calls antworten instant.
-- **Concurrency-Cap** — Fan-out Metadaten-Fetches in `bfs_list_tables_by_theme`
-  laufen parallel begrenzt durch `FANOUT_CONCURRENCY = 5`. Für `limit=20`
+- **Concurrency-Cap** — Fan-out Metadaten-Fetches in `bfs_browse_catalog`
+  (Themen-Modus) laufen parallel begrenzt durch `FANOUT_CONCURRENCY = 5`. Für `limit=20`
   reduziert das die Wall-Clock von ~20s sequenziell auf ~4s, ohne die
   Upstream-API zu überlasten.
 
