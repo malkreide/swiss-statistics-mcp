@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-25
+
+### Added
+- **`bfs_price_index(index, since_year=None)`** → `PriceIndexResult` — Swiss
+  price indices that are **not** carried by STAT-TAB, sourced via
+  opendata.swiss (CKAN) metadata + the BFS DAM asset API:
+    - `baupreisindex`: the construction price index, returned as the parsed
+      national semi-annual series (Schweiz, Baugewerbe Total) with its base
+      period. The XLSX asset is selected from CKAN metadata by verifying the
+      response `content-type` (PDFs skipped) and parsed with `openpyxl`.
+    - `impi`: the residential property price index — BFS publishes it only as
+      PDF/HTML, so the tool returns the official `source_links` plus an explicit
+      limitation instead of parsed values.
+- Results carry the `source` + `provenance` envelope and are cached for 24h
+  (`MCP_PRICE_INDEX_TTL`). New dependency: `openpyxl>=3.1.0`.
+- Reusable UA-aware HTTP helpers `_get_json_ua` / `_get_bytes_ua` that always
+  send a custom `swiss-statistics-mcp/<version>` User-Agent.
+- README (EN + DE): new **Price-index sources** table, a data-source row for the
+  DAM/CKAN channel, an example query, and Known-Limitations entries.
+
+### Known findings
+- **CKAN 403-without-User-Agent:** `ckan.opendata.swiss` rejects default
+  User-Agents with HTTP 403. Every CKAN/DAM call sends a custom User-Agent; a
+  regression test asserts the header is present.
+- **IMPI is not machine-readable.** The IMPI dataset on opendata.swiss exposes
+  only PDF/HTML resources (no XLSX/CSV), and there is no STAT-TAB cube for it —
+  so `index="impi"` is source-links-only by necessity, not choice.
+- **DAM assets mix formats and change ids.** A single dataset carries PDF and
+  XLSX assets under opaque numeric ids that change on republish; the tool
+  resolves the XLSX live from CKAN metadata and validates it by content-type
+  rather than hard-coding an asset id.
+- **Tool count is now 16** (over the 15 guideline). The two catalog-navigation
+  tools (`bfs_list_themes` + `bfs_list_tables_by_theme`) are the natural
+  consolidation candidate if the surface needs to shrink.
+
 ## [0.4.0] - 2026-07-25
 
 ### Added
