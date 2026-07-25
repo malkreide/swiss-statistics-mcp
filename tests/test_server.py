@@ -30,6 +30,7 @@ def _clear_caches():
         _hsso_index_cache,
         _metadata_cache,
         _metadata_timestamps,
+        _price_index_cache,
         _snapshot_cache,
     )
     _catalog_cache.clear()
@@ -37,12 +38,14 @@ def _clear_caches():
     _metadata_timestamps.clear()
     _snapshot_cache.clear()
     _hsso_index_cache.clear()
+    _price_index_cache.clear()
     yield
     _catalog_cache.clear()
     _metadata_cache.clear()
     _metadata_timestamps.clear()
     _snapshot_cache.clear()
     _hsso_index_cache.clear()
+    _price_index_cache.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -1730,6 +1733,242 @@ class TestConstructionValidation:
 
 
 # ---------------------------------------------------------------------------
+# Price indices — IMPI & Baupreisindex (CKAN + DAM)
+# ---------------------------------------------------------------------------
+
+_CKAN_SEARCH_PREFIX = "https://ckan.opendata.swiss/api/3/action/package_search"
+_DAM_PDF_URL = "https://dam-api.bfs.admin.ch/hub/api/dam/assets/111/master"
+_DAM_XLSX_URL = "https://dam-api.bfs.admin.ch/hub/api/dam/assets/222/master"
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _make_bpi_xlsx_bytes():
+    """Build a minimal Baupreisindex workbook matching the real structure:
+    a year-named base sheet with month/year header rows and REG/OBJ code rows."""
+    import io
+
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "2025"
+    ws.append(["<BASE_2025>", "Basis Oktober 2025 = 100"])
+    ws.append([None, None, "Gewicht in %", "Oktober", "April", "Oktober"])
+    ws.append([None, None, None, 2024, 2025, 2025])
+    ws.append(["<REG_01>", "Schweiz"])
+    ws.append(["<OBJ_02>", "Baugewerbe\xa0: Total", 100, 99.1, 99.7, 100.0])
+    ws.append(["<REG_02>", "Genferseeregion"])
+    # This second REG_01-less block must NOT be picked for the national series.
+    ws.append(["<OBJ_02>", "Baugewerbe\xa0: Total", 100, 50.0, 51.0, 52.0])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def _ckan_bpi_result():
+    return {
+        "result": {
+            "count": 1,
+            "results": [
+                {
+                    "name": "schweizerischer-baupreisindex-multibasen",
+                    "title": {"de": "Schweizerischer Baupreisindex (Multibasen)"},
+                    "resources": [
+                        {"format": "PDF", "url": _DAM_PDF_URL},
+                        {"format": "XLSX", "url": _DAM_XLSX_URL},
+                    ],
+                }
+            ],
+        }
+    }
+
+
+def _ckan_impi_result():
+    return {
+        "result": {
+            "count": 1,
+            "results": [
+                {
+                    "name": "schweizerischer-wohnimmobilienpreisindex-impi",
+                    "title": {"de": "Schweizerischer Wohnimmobilienpreisindex (IMPI)"},
+                    "resources": [
+                        {"format": "PDF", "url": _DAM_PDF_URL},
+                        {"format": "HTML", "url": "https://www.bfs.admin.ch/asset/de/2071-2003"},
+                    ],
+                }
+            ],
+        }
+    }
+
+
+class TestPriceIndexParser:
+    def test_parses_national_baugewerbe_total(self):
+        from swiss_statistics_mcp.server import _parse_baupreisindex_xlsx
+
+        parsed = _parse_baupreisindex_xlsx(_make_bpi_xlsx_bytes())
+        assert parsed is not None
+        base, base_label, obj_label, series = parsed
+        assert base == "2025"
+        assert base_label == "Basis Oktober 2025 = 100"
+        assert obj_label == "Baugewerbe : Total"  # nbsp normalized
+        assert series == [("2024-10", 99.1), ("2025-04", 99.7), ("2025-10", 100.0)]
+        # The Genferseeregion block (50/51/52) must not leak into the national row.
+
+    def test_returns_none_on_unexpected_structure(self):
+        import io
+
+        import openpyxl
+
+        from swiss_statistics_mcp.server import _parse_baupreisindex_xlsx
+
+        wb = openpyxl.Workbook()
+        wb.active.title = "Info"  # no year-named base sheet
+        buf = io.BytesIO()
+        wb.save(buf)
+        assert _parse_baupreisindex_xlsx(buf.getvalue()) is None
+
+
+class TestPriceIndexBaupreisindex:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_happy_path_parses_series_and_skips_pdf(self):
+        from swiss_statistics_mcp.server import PriceIndexInput, bfs_price_index
+
+        respx.get(url__startswith=_CKAN_SEARCH_PREFIX).mock(
+            return_value=httpx.Response(200, json=_ckan_bpi_result())
+        )
+        # First candidate is a PDF and must be skipped by content-type.
+        respx.get(_DAM_PDF_URL).mock(
+            return_value=httpx.Response(200, content=b"%PDF-1.7", headers={"content-type": "application/pdf"})
+        )
+        respx.get(_DAM_XLSX_URL).mock(
+            return_value=httpx.Response(
+                200, content=_make_bpi_xlsx_bytes(), headers={"content-type": _XLSX_MIME}
+            )
+        )
+
+        result = await bfs_price_index(PriceIndexInput(index="baupreisindex"))
+        data = result.model_dump(exclude_none=True)
+        assert data.get("error") is None
+        assert data["base"] == "Basis Oktober 2025 = 100"
+        assert "Baugewerbe" in data["coverage"]
+        assert data["series"][0] == {"period": "2024-10", "value": 99.1}
+        assert data["provenance"] == "live_api"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_since_year_filters_series(self):
+        from swiss_statistics_mcp.server import PriceIndexInput, bfs_price_index
+
+        respx.get(url__startswith=_CKAN_SEARCH_PREFIX).mock(
+            return_value=httpx.Response(200, json=_ckan_bpi_result())
+        )
+        respx.get(_DAM_PDF_URL).mock(
+            return_value=httpx.Response(200, content=b"%PDF", headers={"content-type": "application/pdf"})
+        )
+        respx.get(_DAM_XLSX_URL).mock(
+            return_value=httpx.Response(
+                200, content=_make_bpi_xlsx_bytes(), headers={"content-type": _XLSX_MIME}
+            )
+        )
+
+        result = await bfs_price_index(
+            PriceIndexInput(index="baupreisindex", since_year=2025)
+        )
+        periods = [p["period"] for p in result.model_dump()["series"]]
+        assert periods == ["2025-04", "2025-10"]
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_second_call_is_cached(self):
+        from swiss_statistics_mcp.server import PriceIndexInput, bfs_price_index
+
+        ckan = respx.get(url__startswith=_CKAN_SEARCH_PREFIX).mock(
+            return_value=httpx.Response(200, json=_ckan_bpi_result())
+        )
+        respx.get(_DAM_PDF_URL).mock(
+            return_value=httpx.Response(200, content=b"%PDF", headers={"content-type": "application/pdf"})
+        )
+        respx.get(_DAM_XLSX_URL).mock(
+            return_value=httpx.Response(
+                200, content=_make_bpi_xlsx_bytes(), headers={"content-type": _XLSX_MIME}
+            )
+        )
+
+        await bfs_price_index(PriceIndexInput(index="baupreisindex"))
+        r2 = await bfs_price_index(PriceIndexInput(index="baupreisindex"))
+        assert r2.provenance == "cached"
+        assert ckan.call_count == 1  # network hit only once
+
+
+class TestPriceIndexImpi:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_impi_returns_links_and_limitation(self):
+        from swiss_statistics_mcp.server import PriceIndexInput, bfs_price_index
+
+        respx.get(url__startswith=_CKAN_SEARCH_PREFIX).mock(
+            return_value=httpx.Response(200, json=_ckan_impi_result())
+        )
+
+        result = await bfs_price_index(PriceIndexInput(index="impi"))
+        data = result.model_dump(exclude_none=True)
+        assert data.get("error") is None
+        assert "series" not in data  # IMPI has no machine-readable series
+        assert data["source_links"]
+        assert "PDF" in data["note"]
+
+
+class TestPriceIndexUserAgent:
+    """Regression for the CKAN 403-without-User-Agent quirk: every CKAN call
+    MUST carry a custom User-Agent header."""
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_ckan_request_sends_custom_user_agent(self):
+        from swiss_statistics_mcp.server import (
+            CKAN_USER_AGENT,
+            PriceIndexInput,
+            bfs_price_index,
+        )
+
+        route = respx.get(url__startswith=_CKAN_SEARCH_PREFIX).mock(
+            return_value=httpx.Response(200, json=_ckan_impi_result())
+        )
+        await bfs_price_index(PriceIndexInput(index="impi"))
+        sent_ua = route.calls.last.request.headers.get("user-agent")
+        assert sent_ua == CKAN_USER_AGENT
+        assert sent_ua.startswith("swiss-statistics-mcp/")
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_ckan_403_is_graceful(self):
+        """If CKAN rejects the request (the 403 quirk), the tool degrades
+        cleanly instead of leaking a stacktrace."""
+        from swiss_statistics_mcp.server import PriceIndexInput, bfs_price_index
+
+        respx.get(url__startswith=_CKAN_SEARCH_PREFIX).mock(
+            return_value=httpx.Response(403, text="Forbidden")
+        )
+        result = await bfs_price_index(PriceIndexInput(index="baupreisindex"))
+        data = result.model_dump(exclude_none=True)
+        assert "error" in data and "hint" in data
+
+
+class TestPriceIndexValidation:
+    def test_bad_index_rejected(self):
+        from swiss_statistics_mcp.server import PriceIndexInput
+
+        with pytest.raises(Exception):
+            PriceIndexInput(index="hauspreise")
+
+    def test_since_year_optional(self):
+        from swiss_statistics_mcp.server import PriceIndexInput
+
+        assert PriceIndexInput(index="impi").since_year is None
+
+
+# ---------------------------------------------------------------------------
 # Live smoke tests (require network – run separately)
 # ---------------------------------------------------------------------------
 
@@ -1838,3 +2077,24 @@ class TestLiveAPI:
         data = result.model_dump(exclude_none=True)
         assert len(data["years"]) > 0
         assert data["years"][0]["work_on_hand"] is not None
+
+    @pytest.mark.asyncio
+    async def test_live_price_index_baupreisindex(self):
+        from swiss_statistics_mcp.server import PriceIndexInput, bfs_price_index
+
+        result = await bfs_price_index(
+            PriceIndexInput(index="baupreisindex", since_year=2015)
+        )
+        data = result.model_dump(exclude_none=True)
+        assert data.get("error") is None
+        assert len(data["series"]) > 0
+        assert data["series"][-1]["value"] > 0
+
+    @pytest.mark.asyncio
+    async def test_live_price_index_impi_links(self):
+        from swiss_statistics_mcp.server import PriceIndexInput, bfs_price_index
+
+        result = await bfs_price_index(PriceIndexInput(index="impi"))
+        data = result.model_dump(exclude_none=True)
+        assert data.get("error") is None
+        assert data["source_links"]  # PDF/HTML links, no parsed series

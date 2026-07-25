@@ -27,7 +27,7 @@ import uuid
 from collections.abc import Callable
 from datetime import date
 from typing import Any, Literal
-from urllib.parse import urlencode
+from urllib.parse import quote_plus, urlencode
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -1271,7 +1271,10 @@ mcp = FastMCP(
         "statistics across fusions; search_historical_series finds long-run HSSO series. "
         "Construction (STAT-TAB theme 09): bfs_construction_activity for new "
         "buildings/dwellings per commune, bfs_construction_investment for building "
-        "investment and Arbeitsvorrat (the monetary leading indicator) by region/canton/commune."
+        "investment and Arbeitsvorrat (the monetary leading indicator) by region/canton/commune. "
+        "Price indices (not in STAT-TAB): bfs_price_index for the construction price "
+        "index (Baupreisindex, parsed series) and the residential property price index "
+        "(IMPI, source links only — BFS publishes it as PDF)."
     ),
 )
 
@@ -3135,6 +3138,356 @@ async def bfs_construction_investment(
         _LOGGER.exception("bfs_construction_investment failed")
         return ConstructionInvestmentResult(
             error="Interner Fehler beim Abruf der Bauinvestitionen.",
+            hint="Bitte erneut versuchen.",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Price indices — IMPI & Baupreisindex (BFS DAM asset API + opendata.swiss CKAN)
+# ---------------------------------------------------------------------------
+#
+# The residential property price index (IMPI) and the construction price index
+# (Baupreisindex) are NOT in STAT-TAB. They are published as BFS DAM assets
+# (dam-api.bfs.admin.ch) whose dataset metadata lives on opendata.swiss (CKAN).
+# Findings that shape this tool (verified live 2026-07-25):
+#
+# 1. CKAN 403-without-User-Agent: ckan.opendata.swiss rejects requests with a
+#    default httpx/curl User-Agent (HTTP 403). A custom UA is mandatory, so
+#    every CKAN/DAM call here goes through `_get_json_ua` / `_get_bytes_ua`,
+#    which set `CKAN_USER_AGENT`.
+# 2. DAM assets mix formats. IMPI ships only PDF + HTML — there is NO
+#    machine-readable series — so for `index="impi"` this tool returns the
+#    official source links plus an explicit limitation, not parsed values.
+#    The Baupreisindex ships an XLSX; the tool selects it by content-type
+#    (skipping PDFs) and parses the national semi-annual series with openpyxl.
+
+CKAN_API_BASE = "https://ckan.opendata.swiss/api/3/action"
+
+try:  # UA carries the real package version so BFS can attribute traffic.
+    from importlib.metadata import version as _pkg_version
+
+    _UA_VERSION = _pkg_version("swiss-statistics-mcp")
+except Exception:  # pragma: no cover - fallback when metadata is unavailable
+    _UA_VERSION = "0.0.0"
+CKAN_USER_AGENT = f"swiss-statistics-mcp/{_UA_VERSION}"
+
+BFS_PRICE_ATTRIBUTION = (
+    "Bundesamt für Statistik (BFS) — Preisindizes via opendata.swiss (CKAN) "
+    "und BFS DAM-Asset-API. Open Government Data, freie Weiterverwendung."
+)
+
+PRICE_INDEX_CACHE_TTL = int(os.environ.get("MCP_PRICE_INDEX_TTL", "86400"))  # 24h
+_XLSX_CONTENT_TYPES = (
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
+)
+
+# CKAN full-text queries per index. The dataset/resource is then selected from
+# the live metadata (never a hard-coded DAM asset id, which changes on
+# republish).
+_PRICE_INDEX_QUERY = {
+    "baupreisindex": "Baupreisindex Multibasen Grossregion Objekttyp",
+    "impi": "Wohnimmobilienpreisindex",
+}
+# Month names (DE) → 2-digit month, for the semi-annual Baupreisindex header.
+_BPI_MONTHS = {
+    "Januar": "01",
+    "April": "04",
+    "Juli": "07",
+    "Oktober": "10",
+}
+
+# Cache the fully parsed result per index; `since_year` filters at return time.
+_price_index_cache: dict[str, tuple[float, PriceIndexResult]] = {}
+
+
+async def _get_json_ua(url: str) -> Any:
+    """GET JSON with the mandatory custom User-Agent (CKAN 403 guard)."""
+
+    async def _do() -> Any:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, follow_redirects=True) as client:
+            resp = await client.get(url, headers={"User-Agent": CKAN_USER_AGENT})
+            resp.raise_for_status()
+            return resp.json()
+
+    return await _retrying_http(_do)
+
+
+async def _get_bytes_ua(url: str) -> tuple[str, bytes]:
+    """GET raw bytes + content-type with the custom User-Agent, following redirects."""
+
+    async def _do() -> tuple[str, bytes]:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, follow_redirects=True) as client:
+            resp = await client.get(url, headers={"User-Agent": CKAN_USER_AGENT})
+            resp.raise_for_status()
+            return resp.headers.get("content-type", ""), resp.content
+
+    return await _retrying_http(_do)
+
+
+def _ckan_localized(value: Any) -> str:
+    """CKAN titles are `{de,fr,it,en}` dicts (or plain strings) — prefer German."""
+    if isinstance(value, dict):
+        for lang in ("de", "fr", "it", "en"):
+            if value.get(lang):
+                return value[lang]
+        return next((v for v in value.values() if v), "")
+    return value or ""
+
+
+def _parse_baupreisindex_xlsx(
+    content: bytes,
+) -> tuple[str, str, str, list[tuple[str, float]]] | None:
+    """Parse the national Baugewerbe-Total series from a Baupreisindex XLSX.
+
+    The workbook has one sheet per index base (named by year); the latest is
+    used. Region/object rows are keyed by stable codes (`<REG_01>` = national,
+    `<OBJ_02>` = Baugewerbe Total) rather than language-dependent labels.
+
+    Returns (base_sheet, base_label, object_label, [(period, value)]) or None if
+    the expected structure isn't present (so the caller can fall back cleanly).
+    """
+    import io
+
+    import openpyxl
+
+    wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    base_sheets = sorted((s for s in wb.sheetnames if s.isdigit()), key=int)
+    if not base_sheets:
+        return None
+    base = base_sheets[-1]
+    rows = list(wb[base].iter_rows(values_only=True))
+
+    base_label = base
+    for r in rows[:10]:
+        if r and isinstance(r[0], str) and r[0].startswith("<BASE_"):
+            base_label = r[1] if (len(r) > 1 and r[1]) else base
+            break
+
+    # Locate the month-header row (contains a known month name) + the year row.
+    month_row_idx = None
+    for i, r in enumerate(rows[:15]):
+        if any(isinstance(c, str) and c in _BPI_MONTHS for c in r):
+            month_row_idx = i
+            break
+    if month_row_idx is None or month_row_idx + 1 >= len(rows):
+        return None
+    months = rows[month_row_idx]
+    years = rows[month_row_idx + 1]
+    periods: dict[int, str] = {}
+    for j, (mn, yr) in enumerate(zip(months, years)):
+        if isinstance(mn, str) and mn in _BPI_MONTHS and yr not in (None, ""):
+            try:
+                periods[j] = f"{int(yr)}-{_BPI_MONTHS[mn]}"
+            except (TypeError, ValueError):
+                continue
+    if not periods:
+        return None
+
+    cur_region: str | None = None
+    for r in rows:
+        code = r[0]
+        if isinstance(code, str) and code.startswith("<REG_"):
+            cur_region = code
+        if cur_region == "<REG_01>" and code == "<OBJ_02>":
+            obj_label = (r[1] or "Baugewerbe: Total") if len(r) > 1 else "Baugewerbe: Total"
+            series = [
+                (periods[j], round(float(r[j]), 2))
+                for j in sorted(periods)
+                if j < len(r) and isinstance(r[j], (int, float))
+            ]
+            if series:
+                return base, base_label, str(obj_label).replace("\xa0", " ").strip(), series
+            return None
+    return None
+
+
+class PriceIndexInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    index: Literal["impi", "baupreisindex"] = Field(
+        ...,
+        description=(
+            "'baupreisindex' (construction price index — parsed national series) "
+            "or 'impi' (residential property price index — BFS publishes it only "
+            "as PDF, so this returns the official source links, not values)."
+        ),
+    )
+    since_year: int | None = Field(
+        default=None,
+        description="Optional earliest year (inclusive) to include in the series.",
+        ge=1900,
+        le=2100,
+    )
+
+
+class PriceIndexPoint(BaseModel):
+    period: str  # 'YYYY-MM' (semi-annual for the Baupreisindex)
+    value: float
+
+
+class PriceIndexResult(BaseModel):
+    source: str = BFS_PRICE_ATTRIBUTION
+    provenance: str | None = None
+    error: str | None = None
+    hint: str | None = None
+    index: str | None = None
+    title: str | None = None
+    dataset: str | None = None
+    base: str | None = None  # e.g. 'Basis Oktober 2025 = 100'
+    coverage: str | None = None  # e.g. 'Schweiz — Baugewerbe: Total'
+    series: list[PriceIndexPoint] | None = None
+    source_links: list[str] | None = None  # for IMPI / discovery
+    note: str | None = None
+
+
+async def _load_price_index(index: str) -> PriceIndexResult:
+    """Fetch + parse a price index (uncached); results are cached by the tool."""
+    query = _PRICE_INDEX_QUERY[index]
+    search = await _get_json_ua(
+        f"{CKAN_API_BASE}/package_search?q={quote_plus(query)}&rows=10"
+    )
+    datasets = search.get("result", {}).get("results", [])
+    if not datasets:
+        return PriceIndexResult(
+            index=index,
+            error="Kein passendes opendata.swiss-Dataset gefunden.",
+            hint="CKAN evtl. kurz nicht erreichbar. Bitte später erneut versuchen.",
+        )
+
+    if index == "impi":
+        # IMPI: PDF/HTML only — return official source links, no parsed series.
+        ds = next(
+            (d for d in datasets if d.get("name") == "schweizerischer-wohnimmobilienpreisindex-impi"),
+            datasets[0],
+        )
+        links: list[str] = []
+        for res in ds.get("resources", []):
+            fmt = (res.get("format") or "").upper()
+            url = res.get("url") or res.get("download_url")
+            if url and fmt in ("PDF", "HTML"):
+                links.append(url)
+        return PriceIndexResult(
+            provenance="live_api",
+            index=index,
+            title=_ckan_localized(ds.get("title")),
+            dataset=ds.get("name"),
+            source_links=links[:8],
+            note=(
+                "Der Wohnimmobilienpreisindex (IMPI) wird vom BFS nur als PDF/HTML "
+                "publiziert — keine maschinenlesbare Zeitreihe verfügbar. Die "
+                "Indexwerte den verlinkten Quellen (PDF) entnehmen."
+            ),
+        )
+
+    # Baupreisindex: find an XLSX resource, verify content-type, parse.
+    candidates: list[str] = []
+    for ds in datasets:
+        for res in ds.get("resources", []):
+            fmt = (res.get("format") or "").upper()
+            url = res.get("url") or res.get("download_url")
+            if url and (fmt in ("XLSX", "XLS") or "dam-api.bfs.admin.ch" in url):
+                candidates.append(url)
+
+    for url in candidates[:6]:
+        try:
+            content_type, content = await _get_bytes_ua(url)
+        except Exception:
+            _LOGGER.warning("price_index asset fetch failed for %s", url, exc_info=True)
+            continue
+        if not any(ct in content_type for ct in _XLSX_CONTENT_TYPES):
+            continue  # skip PDFs and other non-spreadsheet assets
+        parsed = _parse_baupreisindex_xlsx(content)
+        if parsed is None:
+            continue
+        base, base_label, obj_label, series = parsed
+        ds = datasets[0]
+        return PriceIndexResult(
+            provenance="live_api",
+            index=index,
+            title=_ckan_localized(ds.get("title")),
+            dataset=ds.get("name"),
+            base=base_label,
+            coverage=f"Schweiz — {obj_label}",
+            series=[PriceIndexPoint(period=p, value=v) for p, v in series],
+            note=(
+                "Halbjährliche Indexreihe (April/Oktober) für die Schweiz gesamt "
+                "(Baugewerbe: Total). Regionale und objektspezifische Reihen "
+                "stehen in der Quell-XLSX zur Verfügung."
+            ),
+        )
+
+    return PriceIndexResult(
+        index=index,
+        error="Keine parsbare Baupreisindex-XLSX gefunden.",
+        hint=(
+            "Die DAM-Assets liefern evtl. nur PDF, oder die XLSX-Struktur hat sich "
+            "geändert. Quelle manuell auf opendata.swiss prüfen."
+        ),
+    )
+
+
+@mcp.tool(
+    name="bfs_price_index",
+    annotations={
+        "title": "Swiss Price Indices (IMPI / Baupreisindex)",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
+)
+@_logged_tool("bfs_price_index")
+async def bfs_price_index(params: PriceIndexInput) -> PriceIndexResult:
+    """Swiss price indices not carried by STAT-TAB: Baupreisindex & IMPI.
+
+    - `baupreisindex`: the construction price index — returns the national
+      semi-annual index series (Schweiz, Baugewerbe Total), parsed from the BFS
+      DAM XLSX selected via opendata.swiss (CKAN) metadata.
+    - `impi`: the residential property price index — BFS publishes this only as
+      PDF/HTML, so this returns the official source links plus an explicit
+      limitation rather than parsed values.
+
+    Data flows through opendata.swiss (CKAN), which rejects default User-Agents
+    with HTTP 403; a custom User-Agent is always sent. Results are cached for
+    24h.
+
+    Args:
+        params (PriceIndexInput):
+            - index (str): 'baupreisindex' or 'impi'
+            - since_year (int | None): optional earliest year to include
+
+    Returns:
+        PriceIndexResult with `series` (baupreisindex) or `source_links` (impi).
+        On error, `error`/`hint` are set.
+    """
+    try:
+        now = time.time()
+        cached = _price_index_cache.get(params.index)
+        if cached is not None and (now - cached[0]) < PRICE_INDEX_CACHE_TTL:
+            result = cached[1].model_copy()
+            result.provenance = "cached"
+        else:
+            result = await _load_price_index(params.index)
+            if result.error is None:
+                _price_index_cache[params.index] = (now, result)
+
+        if params.since_year is not None and result.series:
+            filtered = [
+                p for p in result.series if int(p.period[:4]) >= params.since_year
+            ]
+            result = result.model_copy(update={"series": filtered})
+        return result
+    except httpx.HTTPStatusError as e:
+        return PriceIndexResult(
+            index=params.index,
+            error=f"API-Fehler {e.response.status_code}",
+            hint="opendata.swiss / BFS DAM evtl. kurz nicht erreichbar.",
+        )
+    except Exception:
+        _LOGGER.exception("bfs_price_index failed")
+        return PriceIndexResult(
+            index=params.index,
+            error="Interner Fehler beim Abruf des Preisindex.",
             hint="Bitte erneut versuchen.",
         )
 
