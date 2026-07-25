@@ -2,7 +2,7 @@
 
 # 📊 swiss-statistics-mcp
 
-![Version](https://img.shields.io/badge/version-0.3.0-blue)
+![Version](https://img.shields.io/badge/version-0.4.0-blue)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-purple)](https://modelcontextprotocol.io/)
@@ -53,9 +53,10 @@ See [CHANGELOG.md](./CHANGELOG.md) for breaking changes.
 
 ## Features
 
-- 📊 **13 tools**: 9 across 21 statistical themes (682 datasets) + a 4-tool commune/historical **reference layer**
+- 📊 **15 tools**: 9 across 21 statistical themes (682 datasets) + a 4-tool commune/historical **reference layer** + 2 construction/real-estate tools
 - 🔍 **Full-text search** across the entire BFS data catalogue
 - 🎓 **Convenience tools** for education statistics and population data
+- 🏗️ **Construction statistics** — new buildings/dwellings and building investment incl. the Arbeitsvorrat leading indicator
 - 🏔️ **Cross-cantonal comparison** for any table and variable
 - 🔓 **No API key required** — all data under open licences
 - ☁️ **Dual transport** — stdio (Claude Desktop) + Streamable HTTP (cloud)
@@ -225,8 +226,10 @@ detection.
 | `resolve_historical_commune` | `ResolveHistoricalCommuneResult` |
 | `list_communes` | `ListCommunesResult` |
 | `search_historical_series` | `SearchHistoricalSeriesResult` |
+| `bfs_construction_activity` | `ConstructionActivityResult` |
+| `bfs_construction_investment` | `ConstructionInvestmentResult` |
 
-Reference-layer results additionally carry `source` (attribution) and `provenance` (`live_api` \| `cached`); `SearchHistoricalSeriesResult` also carries `licence_note` with the mandatory HSSO NonCommercial notice.
+Reference-layer results additionally carry `source` (attribution) and `provenance` (`live_api` \| `cached`); `SearchHistoricalSeriesResult` also carries `licence_note` with the mandatory HSSO NonCommercial notice. The construction results carry `source` + `provenance` on the same envelope pattern.
 
 ---
 
@@ -247,8 +250,20 @@ Reference-layer results additionally carry `source` (attribution) and `provenanc
 | `resolve_historical_commune` | Map a historical BFS number onto today's number(s) — re-key old statistics across fusions |
 | `list_communes` | List all communes of a canton as of a given date |
 | `search_historical_series` | Search long-run time series in Historical Statistics of Switzerland (HSSO) |
+| `bfs_construction_activity` | New buildings & dwellings per commune (yearly), incl. dwelling room-size mix |
+| `bfs_construction_investment` | Building investment & Arbeitsvorrat (leading indicator) by region/canton/commune |
 
-The last four tools form the **reference layer** of the portfolio (see [Join Keys](#join-keys)): they turn official BFS commune numbers into a reliable join key and let you re-key statistics that predate a municipal merger.
+Four of these tools form the **reference layer** of the portfolio (see [Join Keys](#join-keys)): they turn official BFS commune numbers into a reliable join key and let you re-key statistics that predate a municipal merger. The two `bfs_construction_*` tools cover STAT-TAB theme 09 (Bau- und Wohnungswesen) — see [Construction sources](#construction-sources).
+
+### Construction sources
+
+| Cube ID | Title | Coverage | Used by |
+|---------|-------|----------|---------|
+| `px-x-0904030000_106` | Neu erstellte Gebäude mit Wohnungen nach Gemeinde, Gebäudetyp | 2013– | `bfs_construction_activity` |
+| `px-x-0904030000_105` | Neu erstellte Wohnungen nach Gemeinde, Anzahl Zimmer | 2013– | `bfs_construction_activity` |
+| `px-x-0904010000_205` | Bauinvestitionen und Arbeitsvorrat nach Grossregion/Kanton/Gemeinde | 1994– | `bfs_construction_investment` |
+
+> The pre-2013 Gemeinde-level building series lives in the discontinued cubes `px-x-0904030000_101`/`_104` (1995–2012), which use a different geo coding and are not queried by these tools. Building/dwelling figures are the **consolidated official yearly** statistics — for up-to-date register states and the construction pipeline, cross-validate against `swiss-housing-mcp` (deliberate redundancy).
 
 ### Example Use Cases
 
@@ -262,6 +277,8 @@ The last four tools form the **reference layer** of the portfolio (see [Join Key
 | *"Which Zurich communes have merged since 2000, and onto which of today's BFS numbers must I re-key old statistics?"* | `resolve_historical_commune` |
 | *"List all communes of canton Glarus today"* | `list_communes` |
 | *"Find long-run series on population in HSSO"* | `search_historical_series` |
+| *"How many new dwellings were built in Winterthur since 2018, by room size?"* | `bfs_construction_activity` |
+| *"What is the building investment and Arbeitsvorrat for canton Zurich?"* | `bfs_construction_investment` |
 
 [→ More use cases by audience →](EXAMPLES.md)
 
@@ -292,8 +309,9 @@ The last four tools form the **reference layer** of the portfolio (see [Join Key
 │   Claude / AI   │────▶│  Swiss Statistics MCP          │────▶│  BFS STAT-TAB            │
 │   (MCP Host)    │◀────│  (MCP Server)                │◀────│  PxWeb API v1            │
 └─────────────────┘     │                              │     └──────────────────────────┘
-                        │  13 Tools                    │
-                        │  + commune & historical ref  │
+                        │  15 Tools                    │
+                        │  + commune/historical ref    │
+                        │  + construction (theme 09)   │
                         │  Stdio | Streamable HTTP     │
                         │                              │
                         │  No authentication required  │
@@ -337,7 +355,7 @@ The reference layer exists so that data from different servers in the [Swiss Pub
 swiss-statistics-mcp/
 ├── src/swiss_statistics_mcp/
 │   ├── __init__.py              # Package
-│   └── server.py                # 13 tools
+│   └── server.py                # 15 tools
 ├── tests/
 │   └── test_server.py           # Unit + integration tests (mocked HTTP)
 ├── .github/workflows/ci.yml     # GitHub Actions (Python 3.11/3.12/3.13)
@@ -404,6 +422,12 @@ The server absorbs transient BFS-API hiccups before they reach the LLM:
 - **JSON-STAT2:** Some complex cross-tabulations may return large result sets; use dimension filters to narrow queries
 - **Commune register (AGVCH):** Live snapshot CSV headers use `Inscription/Radiation/Rec_Type_fr` (not the `Einschreibung/Streichung` names in the API PDF); `HistoricalCode` is not globally unique across levels, so the canton is derived by walking the `Parent` chain one tier at a time. Snapshots/mutations are cached for 24 h.
 - **HSSO:** Licensed **CC BY-NC-SA 3.0 (NonCommercial)** — attribution required, no commercial use; every response carries this in `licence_note`. HSSO exposes no per-table period filter, so `search_historical_series`'s `period` argument is an informational hint only — verify the actual span in the XLSX. `search_historical_series` returns the stable XLSX download URL, not the parsed series values.
+- **PxWeb commune codes are not consistent across cubes.** In `px-x-0904030000_106`/`_107` the value code IS the zero-padded BFS number (`0261`); in `px-x-0904030000_105` it is an opaque sequential id (`160`) and the BFS number appears only in the label (`......0261 Zürich`). `bfs_construction_activity` resolves each cube against its own live dimension values by matching the label-embedded BFS number, never by guessing the code.
+- **Construction coverage:** the current Gemeinde-level building series starts in **2013**; `bfs_construction_activity` therefore accepts `since_year >= 2013`. Values are the consolidated official yearly statistics. Building investment values (`bfs_construction_investment`) are in **1000 CHF**; the `Arbeitsvorrat` is the following year's building volume (a monetary leading indicator).
+
+### On the horizon
+
+- **`price_index(index=impi|baupreisindex)`** — the Swiss residential property price index (IMPI) and the construction price index are **not** in STAT-TAB; they are published via the BFS DAM asset API (`dam-api.bfs.admin.ch`) with dataset metadata on opendata.swiss (CKAN). Notable quirks discovered while probing: `ckan.opendata.swiss` returns **HTTP 403** to default User-Agents (a custom UA is required), and DAM assets mix formats (some IMPI assets are PDF, the data lives in XLSX). This tool is planned for a follow-up minor release as its XLSX parsing is the most fragile part of the surface.
 
 ---
 

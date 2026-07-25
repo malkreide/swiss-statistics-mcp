@@ -26,7 +26,7 @@ import time
 import uuid
 from collections.abc import Callable
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlencode
 
 import httpx
@@ -1268,7 +1268,10 @@ mcp = FastMCP(
         "actual statistics. Use bfs_education_stats for Schulamt-relevant shortcuts. "
         "Reference layer: lookup_commune / list_communes / resolve_historical_commune "
         "resolve official BFS commune numbers (the portfolio join key) and re-key old "
-        "statistics across fusions; search_historical_series finds long-run HSSO series."
+        "statistics across fusions; search_historical_series finds long-run HSSO series. "
+        "Construction (STAT-TAB theme 09): bfs_construction_activity for new "
+        "buildings/dwellings per commune, bfs_construction_investment for building "
+        "investment and Arbeitsvorrat (the monetary leading indicator) by region/canton/commune."
     ),
 )
 
@@ -2595,6 +2598,544 @@ async def search_historical_series(
         return SearchHistoricalSeriesResult(
             error="Interner Fehler bei der HSSO-Suche.",
             hint="hsso.ch evtl. nicht erreichbar. Bitte später erneut versuchen.",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Construction & real-estate tools (STAT-TAB theme 09 — Bau- und Wohnungswesen)
+# ---------------------------------------------------------------------------
+#
+# These are consolidated official yearly statistics from STAT-TAB (BFS), the
+# same PxWeb source as the rest of the server, so they reuse `_post`,
+# `_fetch_metadata_cached` and the shared retry policy. Two findings shape the
+# cube choice and the geo resolver (verified live 2026-07-25):
+#
+# 1. The Gemeinde-level building series was restructured at 2012/2013. The old
+#    cubes `_101`–`_104` cover 1995–2012 with a `Kanton (-) / Gemeinde (......)`
+#    geo dimension; the current cubes `_105`–`_107` cover 2013–onwards with a
+#    `Grossregion (<<) / Kanton (-) / Gemeinde (......)` dimension. Since the
+#    default `since_year` is 2015 we query the current cubes.
+# 2. PxWeb Gemeinde codes are NOT consistent across cubes. In `_106`/`_107` the
+#    value code IS the zero-padded BFS number (`0261`); in `_105` the value code
+#    is an opaque sequential id (`160`) and the BFS number appears only inside
+#    the label (`......0261 Zürich`). So the resolver matches on the BFS number
+#    embedded in the *label*, not on the value code — and each cube is resolved
+#    against its own live dimension values, never guessed.
+
+BFS_STATTAB_ATTRIBUTION = (
+    "Bundesamt für Statistik (BFS), STAT-TAB — https://www.pxweb.bfs.admin.ch. "
+    "Open Government Data, freie Weiterverwendung."
+)
+
+# Current (2013–) Gemeinde-level building cubes.
+CONSTRUCTION_BUILDINGS_CUBE = "px-x-0904030000_106"  # neu erstellte Gebäude mit Wohnungen
+CONSTRUCTION_DWELLINGS_CUBE = "px-x-0904030000_105"  # neu erstellte Wohnungen nach Zimmerzahl
+CONSTRUCTION_BUILDINGS_GEO_VAR = "Grossregion (<<) / Kanton (-) / Gemeinde (......)"
+CONSTRUCTION_BUILDINGS_TYPE_VAR = "Gebäudetyp"
+CONSTRUCTION_ROOMS_VAR = "Anzahl Zimmer"
+
+# Bauinvestitionen und Arbeitsvorrat by region / canton / commune (1994–).
+CONSTRUCTION_INVESTMENT_CUBE = "px-x-0904010000_205"
+CONSTRUCTION_INVESTMENT_GEO_VAR = "Grossregion (<<) / Kanton (-) / Gemeinde (......)"
+CONSTRUCTION_INVESTMENT_WORK_VAR = "Art der Arbeiten"
+CONSTRUCTION_INVESTMENT_CATEGORY_VAR = "Kategorie der Bauwerke"
+CONSTRUCTION_INVESTMENT_UNIT_VAR = "Beobachtungseinheit"
+# Beobachtungseinheit codes: absolute current-year investment + absolute
+# next-year Arbeitsvorrat (the monetary leading indicator).
+CONSTRUCTION_INVESTMENT_CODE = "kost_j"   # Laufendes Jahr — Absolute Werte
+CONSTRUCTION_WORKONHAND_CODE = "arbv_k"   # Folgejahr (Arbeitsvorrat) — Absolute Werte
+
+
+def _find_var(meta: dict[str, Any], code: str) -> dict[str, Any] | None:
+    for v in meta.get("variables", []):
+        if v.get("code") == code:
+            return v
+    return None
+
+
+def _strip_geo_prefix(text: str) -> str:
+    """'......0261 Zürich' → 'Zürich'; '- Waadt' → 'Waadt'; '<< Tessin' → 'Tessin'."""
+    return re.sub(r"^[.\-<>\s]*\d*\s*", "", text).strip()
+
+
+def _iter_jsonstat2(data: dict[str, Any]):
+    """Yield (dim_code → value_code dict, value) for every cell, preserving codes.
+
+    Unlike `_format_jsonstat2_as_table` (which yields human labels), this keeps
+    the value *codes* so downstream filtering can key on stable identifiers such
+    as `Beobachtungseinheit == 'kost_j'` rather than a German label string.
+    """
+    import itertools
+
+    dims = data.get("id", [])
+    dim_info = data.get("dimension", {})
+    values = data.get("value", [])
+    code_lists: list[list[str]] = []
+    for d in dims:
+        cats = dim_info.get(d, {}).get("category", {})
+        idx = cats.get("index", {})
+        if isinstance(idx, dict):
+            codes = [c for c, _ in sorted(idx.items(), key=lambda kv: kv[1])]
+        else:
+            codes = list(idx)
+        code_lists.append(codes)
+    for combo, val in zip(itertools.product(*code_lists), values):
+        yield dict(zip(dims, combo)), val
+
+
+def _jsonstat2_label(data: dict[str, Any], dim: str, code: str) -> str:
+    return (
+        data.get("dimension", {})
+        .get(dim, {})
+        .get("category", {})
+        .get("label", {})
+        .get(code, code)
+    )
+
+
+def _resolve_municipality_geo(
+    meta: dict[str, Any], geo_var: str, bfs: int
+) -> tuple[str | None, str | None]:
+    """Resolve a BFS commune number to a cube's geo value code + clean name.
+
+    Matches on the BFS number embedded in the commune *label* (`......0261`),
+    which is stable across cubes even when the value code is an opaque
+    sequential id (see module note). Falls back to a zero-padded code match for
+    cubes that expose the BFS number directly as the value code.
+    """
+    var = _find_var(meta, geo_var)
+    if var is None:
+        return None, None
+    values = var.get("values", [])
+    texts = var.get("valueTexts", values)
+    for code, text in zip(values, texts):
+        m = re.search(r"\.{4,}\s*0*(\d+)", text)  # '......0261 Zürich' → 261
+        if m and int(m.group(1)) == bfs:
+            return code, _strip_geo_prefix(text)
+    for code, text in zip(values, texts):
+        cs = code.lstrip(".")
+        if cs.isdigit() and len(cs) == 4 and int(cs) == bfs:
+            return code, _strip_geo_prefix(text)
+    return None, None
+
+
+def _resolve_investment_geo(
+    meta: dict[str, Any], level: str, code: str
+) -> tuple[str | None, str | None]:
+    """Resolve a (level, code) pair to the investment cube's geo value code.
+
+    - gemeinde: `code` is a BFS number → matched via the label-embedded number.
+    - kanton:   `code` is a two-letter abbreviation (e.g. 'ZH').
+    - grossregion: `code` is a region id ('R1'…'R7') or a region name.
+    All fall back to a case-insensitive name substring match.
+    """
+    var = _find_var(meta, CONSTRUCTION_INVESTMENT_GEO_VAR)
+    if var is None:
+        return None, None
+    values = var.get("values", [])
+    texts = var.get("valueTexts", values)
+    wanted = code.strip()
+
+    if level == "gemeinde":
+        if wanted.isdigit():
+            bfs = int(wanted)
+            for c, t in zip(values, texts):
+                m = re.search(r"\.{4,}\s*0*(\d+)", t)
+                if m and int(m.group(1)) == bfs:
+                    return c, _strip_geo_prefix(t)
+            for c, t in zip(values, texts):
+                cs = c.lstrip(".")
+                if cs.isdigit() and len(cs) == 4 and int(cs) == bfs:
+                    return c, _strip_geo_prefix(t)
+        return None, None
+
+    # kanton / grossregion: exact code match first, then name substring.
+    for c, t in zip(values, texts):
+        if c.upper() == wanted.upper():
+            return c, _strip_geo_prefix(t)
+    wl = wanted.lower()
+    for c, t in zip(values, texts):
+        if wl in _strip_geo_prefix(t).lower():
+            return c, _strip_geo_prefix(t)
+    return None, None
+
+
+class ConstructionActivityInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    municipality_bfs: int = Field(
+        ...,
+        description=(
+            "BFS commune number (e.g. 261 for Zürich). Resolve names to numbers "
+            "with lookup_commune first if needed."
+        ),
+        ge=1,
+        le=9999,
+    )
+    since_year: int = Field(
+        default=2015,
+        description=(
+            "Earliest year to include (inclusive). The current Gemeinde-level "
+            "building series starts in 2013; older years live in the discontinued "
+            "cubes px-x-0904030000_101/_104 (1995–2012) and are not queried here."
+        ),
+        ge=2013,
+        le=2100,
+    )
+
+
+class ConstructionInvestmentInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    level: Literal["grossregion", "kanton", "gemeinde"] = Field(
+        ...,
+        description=(
+            "Geographic level of `code`: 'grossregion' (R1–R7), 'kanton' "
+            "(abbreviation like 'ZH'), or 'gemeinde' (BFS commune number)."
+        ),
+    )
+    code: str = Field(
+        ...,
+        description=(
+            "Region/canton/commune code matching `level`: e.g. 'R1' or "
+            "'Genferseeregion' (grossregion), 'ZH' (kanton), '261' (gemeinde)."
+        ),
+        min_length=1,
+        max_length=40,
+    )
+    since_year: int = Field(
+        default=2015,
+        description="Earliest year to include (inclusive). Series starts in 1994.",
+        ge=1994,
+        le=2100,
+    )
+
+
+class ConstructionActivityYear(BaseModel):
+    year: int
+    new_buildings: int | None = None  # neu erstellte Gebäude mit Wohnungen
+    new_dwellings: int | None = None  # neu erstellte Wohnungen (Total)
+    dwellings_by_rooms: dict[str, int | None] | None = None  # room label → count
+
+
+class ConstructionActivityResult(BaseModel):
+    source: str = BFS_STATTAB_ATTRIBUTION
+    provenance: str | None = None
+    error: str | None = None
+    hint: str | None = None
+    municipality_bfs: int | None = None
+    municipality_name: str | None = None
+    since_year: int | None = None
+    table_ids: list[str] | None = None
+    years: list[ConstructionActivityYear] | None = None
+    cross_validation: str | None = None
+    note: str | None = None
+
+
+class ConstructionInvestmentYear(BaseModel):
+    year: int
+    investment: float | None = None    # Bauinvestitionen, laufendes Jahr (absolut)
+    work_on_hand: float | None = None  # Arbeitsvorrat Folgejahr (absolut)
+
+
+class ConstructionInvestmentResult(BaseModel):
+    source: str = BFS_STATTAB_ATTRIBUTION
+    provenance: str | None = None
+    error: str | None = None
+    hint: str | None = None
+    level: str | None = None
+    code: str | None = None
+    region_name: str | None = None
+    since_year: int | None = None
+    table_id: str | None = None
+    unit: str | None = None
+    years: list[ConstructionInvestmentYear] | None = None
+    note: str | None = None
+
+
+@mcp.tool(
+    name="bfs_construction_activity",
+    annotations={
+        "title": "Swiss Construction Activity (new buildings & dwellings)",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
+)
+@_logged_tool("bfs_construction_activity")
+async def bfs_construction_activity(
+    params: ConstructionActivityInput,
+) -> ConstructionActivityResult:
+    """Yearly new buildings and new dwellings for a commune, with room-size mix.
+
+    Returns the consolidated official annual construction statistics (BFS
+    STAT-TAB theme 09) for one commune: newly built buildings with dwellings
+    (px-x-0904030000_106) and newly built dwellings broken down by number of
+    rooms (px-x-0904030000_105), as a per-year series from `since_year`.
+
+    Note: this is the *consolidated official yearly* statistic. For up-to-date
+    building-register states and the construction pipeline (Baugesuche /
+    Bauvorhaben), see the `swiss-housing-mcp` server — the overlap is deliberate
+    so the two sources can be cross-validated.
+
+    Args:
+        params (ConstructionActivityInput):
+            - municipality_bfs (int): BFS commune number, e.g. 261 (Zürich)
+            - since_year (int): earliest year, inclusive (default 2015)
+
+    Returns:
+        ConstructionActivityResult with a `years` series (new_buildings,
+        new_dwellings, dwellings_by_rooms). On error, `error`/`hint` are set.
+    """
+    try:
+        b_meta = await _fetch_metadata_cached(CONSTRUCTION_BUILDINGS_CUBE, "de")
+        geo_code, name = _resolve_municipality_geo(
+            b_meta, CONSTRUCTION_BUILDINGS_GEO_VAR, params.municipality_bfs
+        )
+        if geo_code is None:
+            return ConstructionActivityResult(
+                municipality_bfs=params.municipality_bfs,
+                error=f"Gemeinde mit BFS-Nummer {params.municipality_bfs} nicht in der Baustatistik gefunden.",
+                hint=(
+                    "BFS-Nummer mit lookup_commune prüfen. Die aktuelle "
+                    "Gemeinde-Baustatistik deckt Gemeinden ab 2013 ab."
+                ),
+            )
+
+        # New buildings with dwellings (Gebäudetyp total).
+        buildings_body = {
+            "query": [
+                {
+                    "code": CONSTRUCTION_BUILDINGS_GEO_VAR,
+                    "selection": {"filter": "item", "values": [geo_code]},
+                },
+                {
+                    "code": CONSTRUCTION_BUILDINGS_TYPE_VAR,
+                    "selection": {"filter": "item", "values": ["0"]},
+                },
+            ],
+            "response": {"format": "json-stat2"},
+        }
+        b_data = await _post(
+            _build_data_url(CONSTRUCTION_BUILDINGS_CUBE, "de"), buildings_body
+        )
+        buildings_by_year: dict[str, int | None] = {}
+        for dims, val in _iter_jsonstat2(b_data):
+            year = _jsonstat2_label(b_data, "Jahr", dims.get("Jahr", ""))
+            buildings_by_year[year] = val
+
+        # New dwellings by number of rooms — resolved against this cube's own
+        # (differently coded) geo dimension.
+        d_meta = await _fetch_metadata_cached(CONSTRUCTION_DWELLINGS_CUBE, "de")
+        d_geo_code, _ = _resolve_municipality_geo(
+            d_meta, CONSTRUCTION_BUILDINGS_GEO_VAR, params.municipality_bfs
+        )
+        dwellings_total: dict[str, int | None] = {}
+        rooms_by_year: dict[str, dict[str, int | None]] = {}
+        if d_geo_code is not None:
+            rooms_var = _find_var(d_meta, CONSTRUCTION_ROOMS_VAR)
+            room_codes = rooms_var.get("values", []) if rooms_var else []
+            dwellings_body = {
+                "query": [
+                    {
+                        "code": CONSTRUCTION_BUILDINGS_GEO_VAR,
+                        "selection": {"filter": "item", "values": [d_geo_code]},
+                    },
+                    {
+                        "code": CONSTRUCTION_ROOMS_VAR,
+                        "selection": {"filter": "item", "values": room_codes},
+                    },
+                ],
+                "response": {"format": "json-stat2"},
+            }
+            d_data = await _post(
+                _build_data_url(CONSTRUCTION_DWELLINGS_CUBE, "de"), dwellings_body
+            )
+            for dims, val in _iter_jsonstat2(d_data):
+                year = _jsonstat2_label(d_data, "Jahr", dims.get("Jahr", ""))
+                room_code = dims.get(CONSTRUCTION_ROOMS_VAR, "")
+                if room_code == "0":  # Wohnungen — Total
+                    dwellings_total[year] = val
+                else:
+                    label = _jsonstat2_label(d_data, CONSTRUCTION_ROOMS_VAR, room_code)
+                    rooms_by_year.setdefault(year, {})[label] = val
+
+        all_years = sorted(
+            {y for y in buildings_by_year} | {y for y in dwellings_total},
+            key=lambda y: int(y) if y.isdigit() else 0,
+        )
+        years: list[ConstructionActivityYear] = []
+        for y in all_years:
+            if not y.isdigit() or int(y) < params.since_year:
+                continue
+            years.append(
+                ConstructionActivityYear(
+                    year=int(y),
+                    new_buildings=buildings_by_year.get(y),
+                    new_dwellings=dwellings_total.get(y),
+                    dwellings_by_rooms=rooms_by_year.get(y) or None,
+                )
+            )
+
+        note = None
+        if d_geo_code is None:
+            note = (
+                "Zimmerzahl-Aufschlüsselung für diese Gemeinde nicht verfügbar; "
+                "nur Gebäudezahlen zurückgegeben."
+            )
+        return ConstructionActivityResult(
+            provenance="live_api",
+            municipality_bfs=params.municipality_bfs,
+            municipality_name=name,
+            since_year=params.since_year,
+            table_ids=[CONSTRUCTION_BUILDINGS_CUBE, CONSTRUCTION_DWELLINGS_CUBE],
+            years=years,
+            cross_validation=(
+                "Konsolidierte amtliche Jahresstatistik. Für tagesaktuelle "
+                "Registerstände und die Bau-Pipeline: swiss-housing-mcp "
+                "(bewusste Redundanz zur Cross-Validation)."
+            ),
+            note=note,
+        )
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 400:
+            return ConstructionActivityResult(
+                error="Ungültige Abfrage (HTTP 400).",
+                hint="BFS-Nummer prüfen; STAT-TAB hat die Auswahl abgelehnt.",
+            )
+        return ConstructionActivityResult(error=f"API-Fehler {e.response.status_code}")
+    except Exception:
+        _LOGGER.exception("bfs_construction_activity failed")
+        return ConstructionActivityResult(
+            error="Interner Fehler beim Abruf der Bautätigkeit.",
+            hint="Bitte erneut versuchen.",
+        )
+
+
+@mcp.tool(
+    name="bfs_construction_investment",
+    annotations={
+        "title": "Swiss Construction Investment & Arbeitsvorrat",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
+)
+@_logged_tool("bfs_construction_investment")
+async def bfs_construction_investment(
+    params: ConstructionInvestmentInput,
+) -> ConstructionInvestmentResult:
+    """Yearly building investment and Arbeitsvorrat for a region/canton/commune.
+
+    Returns building investment (Bauinvestitionen, current year) alongside the
+    Arbeitsvorrat (work on hand for the following year) from BFS STAT-TAB
+    px-x-0904010000_205, as a per-year series from `since_year`. The
+    Arbeitsvorrat is the monetary leading indicator: it signals next year's
+    construction volume before it is realised.
+
+    Args:
+        params (ConstructionInvestmentInput):
+            - level (str): 'grossregion', 'kanton', or 'gemeinde'
+            - code (str): region/canton/commune code matching `level`
+            - since_year (int): earliest year, inclusive (default 2015)
+
+    Returns:
+        ConstructionInvestmentResult with a `years` series (investment,
+        work_on_hand) in 1000 CHF. On error, `error`/`hint` are set.
+    """
+    try:
+        meta = await _fetch_metadata_cached(CONSTRUCTION_INVESTMENT_CUBE, "de")
+        geo_code, region_name = _resolve_investment_geo(meta, params.level, params.code)
+        if geo_code is None:
+            return ConstructionInvestmentResult(
+                level=params.level,
+                code=params.code,
+                error=f"Kein Eintrag für {params.level}='{params.code}' gefunden.",
+                hint=(
+                    "grossregion: 'R1'–'R7'; kanton: Kürzel wie 'ZH'; "
+                    "gemeinde: BFS-Nummer (lookup_commune)."
+                ),
+            )
+
+        body = {
+            "query": [
+                {
+                    "code": CONSTRUCTION_INVESTMENT_GEO_VAR,
+                    "selection": {"filter": "item", "values": [geo_code]},
+                },
+                {
+                    "code": CONSTRUCTION_INVESTMENT_WORK_VAR,
+                    "selection": {"filter": "item", "values": ["0"]},  # Total
+                },
+                {
+                    "code": CONSTRUCTION_INVESTMENT_CATEGORY_VAR,
+                    "selection": {"filter": "item", "values": ["0"]},  # Total
+                },
+                {
+                    "code": CONSTRUCTION_INVESTMENT_UNIT_VAR,
+                    "selection": {
+                        "filter": "item",
+                        "values": [
+                            CONSTRUCTION_INVESTMENT_CODE,
+                            CONSTRUCTION_WORKONHAND_CODE,
+                        ],
+                    },
+                },
+            ],
+            "response": {"format": "json-stat2"},
+        }
+        data = await _post(_build_data_url(CONSTRUCTION_INVESTMENT_CUBE, "de"), body)
+
+        investment: dict[str, float | None] = {}
+        work_on_hand: dict[str, float | None] = {}
+        for dims, val in _iter_jsonstat2(data):
+            year = _jsonstat2_label(data, "Jahr", dims.get("Jahr", ""))
+            unit = dims.get(CONSTRUCTION_INVESTMENT_UNIT_VAR, "")
+            if unit == CONSTRUCTION_INVESTMENT_CODE:
+                investment[year] = val
+            elif unit == CONSTRUCTION_WORKONHAND_CODE:
+                work_on_hand[year] = val
+
+        all_years = sorted(
+            {y for y in investment} | {y for y in work_on_hand},
+            key=lambda y: int(y) if y.isdigit() else 0,
+        )
+        years = [
+            ConstructionInvestmentYear(
+                year=int(y),
+                investment=investment.get(y),
+                work_on_hand=work_on_hand.get(y),
+            )
+            for y in all_years
+            if y.isdigit() and int(y) >= params.since_year
+        ]
+
+        return ConstructionInvestmentResult(
+            provenance="live_api",
+            level=params.level,
+            code=params.code,
+            region_name=region_name,
+            since_year=params.since_year,
+            table_id=CONSTRUCTION_INVESTMENT_CUBE,
+            unit="1000 CHF",
+            years=years,
+            note=(
+                "Werte in 1000 CHF. Arbeitsvorrat = Bauvolumen des Folgejahres "
+                "(monetärer Frühindikator)."
+            ),
+        )
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 400:
+            return ConstructionInvestmentResult(
+                error="Ungültige Abfrage (HTTP 400).",
+                hint="level/code-Kombination prüfen; STAT-TAB hat die Auswahl abgelehnt.",
+            )
+        return ConstructionInvestmentResult(error=f"API-Fehler {e.response.status_code}")
+    except Exception:
+        _LOGGER.exception("bfs_construction_investment failed")
+        return ConstructionInvestmentResult(
+            error="Interner Fehler beim Abruf der Bauinvestitionen.",
+            hint="Bitte erneut versuchen.",
         )
 
 
