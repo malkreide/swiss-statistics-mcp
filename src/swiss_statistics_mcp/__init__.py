@@ -7,4 +7,7 @@ try:
     # installed package metadata so __version__ never drifts out of sync.
     __version__ = version("swiss-statistics-mcp")
 except PackageNotFoundError:  # pragma: no cover - running from an uninstalled source tree
-    __version__ = "0.0.0"
+    # Bewusst mit lokalem Segment: "0.0.0" allein sieht wie ein echtes
+    # Release aus. Der Marker macht sichtbar, dass hier keine Version
+    # bekannt ist — Portfolio-Konvention.
+    __version__ = "0.0.0+source"
