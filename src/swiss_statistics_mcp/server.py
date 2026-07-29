@@ -30,7 +30,7 @@ from typing import Any, Literal
 from urllib.parse import quote_plus, urlencode
 
 import httpx
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from pydantic import BaseModel, ConfigDict, Field
 from tenacity import (
     AsyncRetrying,
@@ -122,6 +122,7 @@ _AGVCH_LEVEL_LABELS = {"1": "Kanton", "2": "Bezirk", "3": "Gemeinde"}
 # can index per-tool latency and errors. stdout is reserved for the MCP
 # protocol on stdio transport — never write logs there.
 
+
 class _JsonFormatter(logging.Formatter):
     """JSON formatter that accepts dict-shaped records and falls back to
     plain messages for library logs."""
@@ -165,6 +166,7 @@ def _logged_tool(tool_name: str) -> Callable[[Callable[..., Any]], Callable[...,
     the field list keys-only sidesteps any future privacy concern when
     the same plumbing is reused on PII data.
     """
+
     def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(fn)
         async def wrapper(params: BaseModel, *args: Any, **kwargs: Any) -> Any:
@@ -174,34 +176,43 @@ def _logged_tool(tool_name: str) -> Callable[[Callable[..., Any]], Callable[...,
                 param_keys = sorted(params.model_dump(exclude_none=True).keys())
             except Exception:
                 param_keys = []
-            _LOGGER.info({
-                "event": "tool_start",
-                "tool": tool_name,
-                "rid": rid,
-                "params_keys": param_keys,
-            })
+            _LOGGER.info(
+                {
+                    "event": "tool_start",
+                    "tool": tool_name,
+                    "rid": rid,
+                    "params_keys": param_keys,
+                }
+            )
             try:
                 result = await fn(params, *args, **kwargs)
-                _LOGGER.info({
-                    "event": "tool_end",
-                    "tool": tool_name,
-                    "rid": rid,
-                    "status": "ok",
-                    "duration_ms": int((time.monotonic() - t0) * 1000),
-                })
+                _LOGGER.info(
+                    {
+                        "event": "tool_end",
+                        "tool": tool_name,
+                        "rid": rid,
+                        "status": "ok",
+                        "duration_ms": int((time.monotonic() - t0) * 1000),
+                    }
+                )
                 return result
             except Exception as e:
-                _LOGGER.info({
-                    "event": "tool_end",
-                    "tool": tool_name,
-                    "rid": rid,
-                    "status": "error",
-                    "error_type": type(e).__name__,
-                    "duration_ms": int((time.monotonic() - t0) * 1000),
-                })
+                _LOGGER.info(
+                    {
+                        "event": "tool_end",
+                        "tool": tool_name,
+                        "rid": rid,
+                        "status": "error",
+                        "error_type": type(e).__name__,
+                        "duration_ms": int((time.monotonic() - t0) * 1000),
+                    }
+                )
                 raise
+
         return wrapper
+
     return decorator
+
 
 BFS_THEMES: dict[str, str] = {
     "01": "Bevölkerung",
@@ -300,21 +311,25 @@ async def _retrying_http(coro_factory: Callable[[], Any]) -> Any:
 
 async def _get(url: str) -> Any:
     """Perform a GET request and return parsed JSON, with retry on transient errors."""
+
     async def _do() -> Any:
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
             resp = await client.get(url)
             resp.raise_for_status()
             return resp.json()
+
     return await _retrying_http(_do)
 
 
 async def _post(url: str, body: dict[str, Any]) -> Any:
     """Perform a POST request and return parsed JSON, with retry on transient errors."""
+
     async def _do() -> Any:
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
             resp = await client.post(url, json=body)
             resp.raise_for_status()
             return resp.json()
+
     return await _retrying_http(_do)
 
 
@@ -324,11 +339,13 @@ async def _get_text(url: str) -> str:
     Used for the AGVCH CSV endpoints and HSSO HTML pages, which are not JSON.
     Shares the same transient-error retry policy as `_get`/`_post`.
     """
+
     async def _do() -> str:
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, follow_redirects=True) as client:
             resp = await client.get(url)
             resp.raise_for_status()
             return resp.text
+
     return await _retrying_http(_do)
 
 
@@ -437,9 +454,7 @@ def _climb_to_canton(
     return cur
 
 
-def _commune_entry(
-    row: dict[str, str], by_hist: dict[str, list[dict[str, str]]]
-) -> CommuneEntry:
+def _commune_entry(row: dict[str, str], by_hist: dict[str, list[dict[str, str]]]) -> CommuneEntry:
     """Build a CommuneEntry from a snapshot row, enriched with canton + URI."""
     level = row.get("Level", "")
     canton_row = _climb_to_canton(row, by_hist)
@@ -550,9 +565,7 @@ async def _ensure_hsso_index() -> tuple[list[HistoricalSeriesEntry], bool]:
                 return []
             return _parse_hsso_chapter(text)
 
-    chapter_results = await asyncio.gather(
-        *(fetch_chapter(c) for c in _HSSO_CHAPTERS)
-    )
+    chapter_results = await asyncio.gather(*(fetch_chapter(c) for c in _HSSO_CHAPTERS))
     complete = all(chapter_results)  # every chapter yielded at least one table
     index: list[HistoricalSeriesEntry] = [e for r in chapter_results for e in r]
     if index and complete:
@@ -608,6 +621,7 @@ async def _fetch_metadata_cached(dbid: str, lang: str) -> dict[str, Any]:
 # Catalog management
 # ---------------------------------------------------------------------------
 
+
 async def _ensure_catalog(lang: str = DEFAULT_LANGUAGE) -> dict[str, str]:
     """Return the full catalog {dbid: title}, with TTL-based caching.
 
@@ -639,9 +653,7 @@ async def _ensure_catalog(lang: str = DEFAULT_LANGUAGE) -> dict[str, str]:
                     meta = resp.json()
                     catalog[dbid] = meta.get("title", dbid)
             except Exception:
-                _LOGGER.warning(
-                    "catalog metadata fetch failed for %s", dbid, exc_info=True
-                )
+                _LOGGER.warning("catalog metadata fetch failed for %s", dbid, exc_info=True)
                 catalog[dbid] = dbid  # fallback to ID if metadata unavailable
 
     _catalog_cache[cache_key] = catalog
@@ -652,6 +664,7 @@ async def _ensure_catalog(lang: str = DEFAULT_LANGUAGE) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # Pydantic input models
 # ---------------------------------------------------------------------------
+
 
 class ListThemesInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -860,7 +873,7 @@ class CompareCantonsInput(BaseModel):
 # ---------------------------------------------------------------------------
 #
 # Every tool now returns a typed Pydantic model rather than a JSON string.
-# FastMCP serialises these as structured content so clients can render
+# MCPServer serialises these as structured content so clients can render
 # fields directly and follow-up tool calls can be typed against the schema.
 #
 # Each result includes `error: str | None` and `hint: str | None` at the
@@ -1189,6 +1202,7 @@ class SearchHistoricalSeriesResult(BaseModel):
 # Response formatting helpers
 # ---------------------------------------------------------------------------
 
+
 def _format_jsonstat2_as_table(data: dict[str, Any], max_rows: int = 500) -> dict[str, Any]:
     """Convert JSON-stat2 response to a readable table format."""
     dimensions = data.get("id", [])
@@ -1220,6 +1234,7 @@ def _format_jsonstat2_as_table(data: dict[str, Any], max_rows: int = 500) -> dic
 
     # Generate all combinations
     import itertools
+
     combos = list(itertools.product(*dim_labels))
 
     rows = []
@@ -1257,7 +1272,7 @@ def _format_jsonstat2_as_table(data: dict[str, Any], max_rows: int = 500) -> dic
 # MCP Server
 # ---------------------------------------------------------------------------
 
-mcp = FastMCP(
+mcp = MCPServer(
     "swiss_statistics_mcp",
     instructions=(
         "Access Swiss Federal Statistical Office (BFS/OFS/UST) data via STAT-TAB. "
@@ -1283,6 +1298,7 @@ mcp = FastMCP(
 # ---------------------------------------------------------------------------
 # Tool: Browse catalog (themes + tables by theme)
 # ---------------------------------------------------------------------------
+
 
 @mcp.tool(
     name="bfs_browse_catalog",
@@ -1348,10 +1364,7 @@ async def bfs_browse_catalog(params: BrowseCatalogInput) -> BrowseCatalogResult:
             )
 
         # --- tables mode: datasets within one theme ---
-        theme_dbs = [
-            db for db in all_dbs
-            if _theme_code_from_dbid(db["dbid"]) == params.theme_code
-        ]
+        theme_dbs = [db for db in all_dbs if _theme_code_from_dbid(db["dbid"]) == params.theme_code]
 
         if not theme_dbs:
             available = list(BFS_THEMES.keys())
@@ -1385,9 +1398,7 @@ async def bfs_browse_catalog(params: BrowseCatalogInput) -> BrowseCatalogResult:
                         featured=dbid in FEATURED_TABLES,
                     )
                 except Exception:
-                    _LOGGER.warning(
-                        "table metadata fetch failed for %s", dbid, exc_info=True
-                    )
+                    _LOGGER.warning("table metadata fetch failed for %s", dbid, exc_info=True)
                     return TableEntry(table_id=dbid, title=dbid)
 
         tables = await asyncio.gather(*(fetch_one(dbid) for dbid in selected))
@@ -1420,6 +1431,7 @@ async def bfs_browse_catalog(params: BrowseCatalogInput) -> BrowseCatalogResult:
 # ---------------------------------------------------------------------------
 # Tool: Search tables
 # ---------------------------------------------------------------------------
+
 
 @mcp.tool(
     name="bfs_search_tables",
@@ -1504,6 +1516,7 @@ async def bfs_search_tables(params: SearchTablesInput) -> SearchTablesResult:
 # Tool: Get table metadata
 # ---------------------------------------------------------------------------
 
+
 @mcp.tool(
     name="bfs_get_table_metadata",
     annotations={
@@ -1568,11 +1581,7 @@ async def bfs_get_table_metadata(params: GetTableMetadataInput) -> TableMetadata
         theme_code = _theme_code_from_dbid(params.table_id)
 
         first_var_code = variables[0].code if variables else "Variable"
-        first_val_code = (
-            variables[0].values[0].code
-            if variables and variables[0].values
-            else "0"
-        )
+        first_val_code = variables[0].values[0].code if variables and variables[0].values else "0"
 
         return TableMetadataResult(
             table_id=params.table_id,
@@ -1587,8 +1596,8 @@ async def bfs_get_table_metadata(params: GetTableMetadataInput) -> TableMetadata
             usage_hint=(
                 "Verwende 'code' der Variable und 'code' der gewünschten Werte "
                 "als Filter in bfs_get_data. Beispiel: "
-                f"filters=[{{\"code\": \"{first_var_code}\", "
-                f"\"values\": [\"{first_val_code}\"]}}]"
+                f'filters=[{{"code": "{first_var_code}", '
+                f'"values": ["{first_val_code}"]}}]'
             ),
         )
     except httpx.HTTPStatusError as e:
@@ -1609,6 +1618,7 @@ async def bfs_get_table_metadata(params: GetTableMetadataInput) -> TableMetadata
 # ---------------------------------------------------------------------------
 # Tool: Get data
 # ---------------------------------------------------------------------------
+
 
 @mcp.tool(
     name="bfs_get_data",
@@ -1884,6 +1894,7 @@ async def bfs_education_stats(params: GetEducationStatsInput) -> DataTableResult
 # Tool: Population data
 # ---------------------------------------------------------------------------
 
+
 @mcp.tool(
     name="bfs_population",
     annotations={
@@ -1956,30 +1967,22 @@ async def bfs_population(params: GetPopulationInput) -> DataTableResult:
             query.append(
                 {"code": "Geschlecht", "selection": {"filter": "item", "values": ["-99999"]}}
             )
-            query.append(
-                {"code": "Alter", "selection": {"filter": "item", "values": ["-99999"]}}
-            )
+            query.append({"code": "Alter", "selection": {"filter": "item", "values": ["-99999"]}})
         elif params.breakdown == "gender":
             query.append(
                 {"code": "Geschlecht", "selection": {"filter": "item", "values": ["1", "2"]}}
             )
-            query.append(
-                {"code": "Alter", "selection": {"filter": "item", "values": ["-99999"]}}
-            )
+            query.append({"code": "Alter", "selection": {"filter": "item", "values": ["-99999"]}})
         elif params.breakdown == "age":
             query.append(
                 {"code": "Geschlecht", "selection": {"filter": "item", "values": ["-99999"]}}
             )
             # Age groups: 0-18 for school planning context
             age_values = [str(i) for i in range(19)]
-            query.append(
-                {"code": "Alter", "selection": {"filter": "item", "values": age_values}}
-            )
+            query.append({"code": "Alter", "selection": {"filter": "item", "values": age_values}})
 
         if params.year:
-            query.append(
-                {"code": "Jahr", "selection": {"filter": "item", "values": [params.year]}}
-            )
+            query.append({"code": "Jahr", "selection": {"filter": "item", "values": [params.year]}})
 
         body = {"query": query, "response": {"format": "json-stat2"}}
         data = await _post(url, body)
@@ -2012,6 +2015,7 @@ async def bfs_population(params: GetPopulationInput) -> DataTableResult:
 # ---------------------------------------------------------------------------
 # Tool: Compare cantons
 # ---------------------------------------------------------------------------
+
 
 @mcp.tool(
     name="bfs_compare_cantons",
@@ -2116,6 +2120,7 @@ async def bfs_compare_cantons(params: CompareCantonsInput) -> DataTableResult:
 # ---------------------------------------------------------------------------
 # Tool: Featured datasets
 # ---------------------------------------------------------------------------
+
 
 @mcp.tool(
     name="bfs_featured_datasets",
@@ -2378,9 +2383,7 @@ async def resolve_historical_commune(
             )
         else:
             targets = ", ".join(f"{s.name} ({s.bfs_number})" for s in successors)
-            note = (
-                f"Alte Statistik auf BFS-Nummer {bfs} umschlüsseln auf: {targets}."
-            )
+            note = f"Alte Statistik auf BFS-Nummer {bfs} umschlüsseln auf: {targets}."
 
         return ResolveHistoricalCommuneResult(
             provenance="live_api",
@@ -2540,9 +2543,7 @@ async def search_historical_series(
             )
 
         terms = params.topic.lower().split()
-        matches = [
-            e for e in index if all(t in e.title.lower() for t in terms)
-        ]
+        matches = [e for e in index if all(t in e.title.lower() for t in terms)]
         shown = matches[:25]
 
         notes: list[str] = []
@@ -2616,8 +2617,8 @@ CONSTRUCTION_INVESTMENT_CATEGORY_VAR = "Kategorie der Bauwerke"
 CONSTRUCTION_INVESTMENT_UNIT_VAR = "Beobachtungseinheit"
 # Beobachtungseinheit codes: absolute current-year investment + absolute
 # next-year Arbeitsvorrat (the monetary leading indicator).
-CONSTRUCTION_INVESTMENT_CODE = "kost_j"   # Laufendes Jahr — Absolute Werte
-CONSTRUCTION_WORKONHAND_CODE = "arbv_k"   # Folgejahr (Arbeitsvorrat) — Absolute Werte
+CONSTRUCTION_INVESTMENT_CODE = "kost_j"  # Laufendes Jahr — Absolute Werte
+CONSTRUCTION_WORKONHAND_CODE = "arbv_k"  # Folgejahr (Arbeitsvorrat) — Absolute Werte
 
 
 def _find_var(meta: dict[str, Any], code: str) -> dict[str, Any] | None:
@@ -2659,11 +2660,7 @@ def _iter_jsonstat2(data: dict[str, Any]):
 
 def _jsonstat2_label(data: dict[str, Any], dim: str, code: str) -> str:
     return (
-        data.get("dimension", {})
-        .get(dim, {})
-        .get("category", {})
-        .get("label", {})
-        .get(code, code)
+        data.get("dimension", {}).get(dim, {}).get("category", {}).get("label", {}).get(code, code)
     )
 
 
@@ -2806,7 +2803,7 @@ class ConstructionActivityResult(BaseModel):
 
 class ConstructionInvestmentYear(BaseModel):
     year: int
-    investment: float | None = None    # Bauinvestitionen, laufendes Jahr (absolut)
+    investment: float | None = None  # Bauinvestitionen, laufendes Jahr (absolut)
     work_on_hand: float | None = None  # Arbeitsvorrat Folgejahr (absolut)
 
 
@@ -2889,9 +2886,7 @@ async def bfs_construction_activity(
             ],
             "response": {"format": "json-stat2"},
         }
-        b_data = await _post(
-            _build_data_url(CONSTRUCTION_BUILDINGS_CUBE, "de"), buildings_body
-        )
+        b_data = await _post(_build_data_url(CONSTRUCTION_BUILDINGS_CUBE, "de"), buildings_body)
         buildings_by_year: dict[str, int | None] = {}
         for dims, val in _iter_jsonstat2(b_data):
             year = _jsonstat2_label(b_data, "Jahr", dims.get("Jahr", ""))
@@ -2921,9 +2916,7 @@ async def bfs_construction_activity(
                 ],
                 "response": {"format": "json-stat2"},
             }
-            d_data = await _post(
-                _build_data_url(CONSTRUCTION_DWELLINGS_CUBE, "de"), dwellings_body
-            )
+            d_data = await _post(_build_data_url(CONSTRUCTION_DWELLINGS_CUBE, "de"), dwellings_body)
             for dims, val in _iter_jsonstat2(d_data):
                 year = _jsonstat2_label(d_data, "Jahr", dims.get("Jahr", ""))
                 room_code = dims.get(CONSTRUCTION_ROOMS_VAR, "")
@@ -3314,9 +3307,7 @@ class PriceIndexResult(BaseModel):
 async def _load_price_index(index: str) -> PriceIndexResult:
     """Fetch + parse a price index (uncached); results are cached by the tool."""
     query = _PRICE_INDEX_QUERY[index]
-    search = await _get_json_ua(
-        f"{CKAN_API_BASE}/package_search?q={quote_plus(query)}&rows=10"
-    )
+    search = await _get_json_ua(f"{CKAN_API_BASE}/package_search?q={quote_plus(query)}&rows=10")
     datasets = search.get("result", {}).get("results", [])
     if not datasets:
         return PriceIndexResult(
@@ -3328,7 +3319,11 @@ async def _load_price_index(index: str) -> PriceIndexResult:
     if index == "impi":
         # IMPI: PDF/HTML only — return official source links, no parsed series.
         ds = next(
-            (d for d in datasets if d.get("name") == "schweizerischer-wohnimmobilienpreisindex-impi"),
+            (
+                d
+                for d in datasets
+                if d.get("name") == "schweizerischer-wohnimmobilienpreisindex-impi"
+            ),
             datasets[0],
         )
         links: list[str] = []
@@ -3443,9 +3438,7 @@ async def bfs_price_index(params: PriceIndexInput) -> PriceIndexResult:
                 _price_index_cache[params.index] = (now, result)
 
         if params.since_year is not None and result.series:
-            filtered = [
-                p for p in result.series if int(p.period[:4]) >= params.since_year
-            ]
+            filtered = [p for p in result.series if int(p.period[:4]) >= params.since_year]
             result = result.model_copy(update={"series": filtered})
         return result
     except httpx.HTTPStatusError as e:
@@ -3473,17 +3466,17 @@ if __name__ == "__main__":
 
     if "--http" in sys.argv:
         port_idx = sys.argv.index("--port") + 1 if "--port" in sys.argv else None
-        port     = int(sys.argv[port_idx]) if port_idx else 8000
+        port = int(sys.argv[port_idx]) if port_idx else 8000
 
         # Default to loopback. The server has no authentication; exposing it on
         # 0.0.0.0 turns it into an open proxy to the BFS API. Set MCP_HOST or
         # pass --host explicitly to bind elsewhere (e.g. behind a reverse proxy
         # with access control).
         host_idx = sys.argv.index("--host") + 1 if "--host" in sys.argv else None
-        host     = sys.argv[host_idx] if host_idx else os.environ.get("MCP_HOST", "127.0.0.1")
+        host = sys.argv[host_idx] if host_idx else os.environ.get("MCP_HOST", "127.0.0.1")
 
-        mcp.settings.host = host
-        mcp.settings.port = port
-        mcp.run(transport="streamable-http")
+        # mcp 2.x: the bind address is a run() kwarg — MCPServer.settings no
+        # longer carries host/port.
+        mcp.run(transport="streamable-http", host=host, port=port)
     else:
         mcp.run()
