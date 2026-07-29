@@ -21,6 +21,7 @@ import respx
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def _clear_caches():
     """Clear module-level caches between tests so cache state from one test
@@ -33,6 +34,7 @@ def _clear_caches():
         _price_index_cache,
         _snapshot_cache,
     )
+
     _catalog_cache.clear()
     _metadata_cache.clear()
     _metadata_timestamps.clear()
@@ -51,6 +53,7 @@ def _clear_caches():
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _mock_all_dbs_response() -> list[dict]:
     """Minimal list of mock BFS databases for testing."""
@@ -123,31 +126,38 @@ def _mock_jsonstat2_response() -> dict:
 # Unit tests: theme helpers
 # ---------------------------------------------------------------------------
 
+
 class TestThemeCodeExtraction:
     def test_education_theme(self):
         from swiss_statistics_mcp.server import _theme_code_from_dbid
+
         assert _theme_code_from_dbid("px-x-1504000000_173") == "15"
 
     def test_population_theme(self):
         from swiss_statistics_mcp.server import _theme_code_from_dbid
+
         assert _theme_code_from_dbid("px-x-0102010000_101") == "01"
 
     def test_politics_theme(self):
         from swiss_statistics_mcp.server import _theme_code_from_dbid
+
         assert _theme_code_from_dbid("px-x-1703030000_101") == "17"
 
     def test_work_theme(self):
         from swiss_statistics_mcp.server import _theme_code_from_dbid
+
         assert _theme_code_from_dbid("px-x-0301000000_101") == "03"
 
     def test_sustainability_theme(self):
         from swiss_statistics_mcp.server import _theme_code_from_dbid
+
         assert _theme_code_from_dbid("px-x-2105000000_101") == "21"
 
 
 class TestJsonStat2Formatting:
     def test_basic_table(self):
         from swiss_statistics_mcp.server import _format_jsonstat2_as_table
+
         data = _mock_jsonstat2_response()
         result = _format_jsonstat2_as_table(data)
 
@@ -162,6 +172,7 @@ class TestJsonStat2Formatting:
 
     def test_max_rows_respected(self):
         from swiss_statistics_mcp.server import _format_jsonstat2_as_table
+
         data = _mock_jsonstat2_response()
         result = _format_jsonstat2_as_table(data, max_rows=2)
 
@@ -172,6 +183,7 @@ class TestJsonStat2Formatting:
 
     def test_dimensions_included(self):
         from swiss_statistics_mcp.server import _format_jsonstat2_as_table
+
         data = _mock_jsonstat2_response()
         result = _format_jsonstat2_as_table(data)
 
@@ -183,39 +195,47 @@ class TestJsonStat2Formatting:
 class TestCantonMapping:
     def test_zurich_mapped(self):
         from swiss_statistics_mcp.server import CANTON_NAME_TO_VALUE
+
         assert CANTON_NAME_TO_VALUE["Zürich"] == "1"
 
     def test_bern_mapped(self):
         from swiss_statistics_mcp.server import CANTON_NAME_TO_VALUE
+
         assert CANTON_NAME_TO_VALUE["Bern / Berne"] == "2"
 
     def test_all_26_cantons_present(self):
         from swiss_statistics_mcp.server import CANTON_NAME_TO_VALUE
+
         # 26 cantons + Switzerland = 27 entries
         assert len(CANTON_NAME_TO_VALUE) == 27
 
     def test_schweiz_is_zero(self):
         from swiss_statistics_mcp.server import CANTON_NAME_TO_VALUE
+
         assert CANTON_NAME_TO_VALUE["Schweiz"] == "0"
 
 
 class TestFeaturedDatasets:
     def test_featured_tables_defined(self):
         from swiss_statistics_mcp.server import FEATURED_TABLES
+
         assert len(FEATURED_TABLES) >= 10
 
     def test_teacher_table_featured(self):
         from swiss_statistics_mcp.server import FEATURED_TABLES
+
         assert "px-x-1504000000_173" in FEATURED_TABLES
 
     def test_population_table_featured(self):
         from swiss_statistics_mcp.server import FEATURED_TABLES
+
         assert "px-x-0102010000_101" in FEATURED_TABLES
 
 
 # ---------------------------------------------------------------------------
 # Integration tests: tool invocations (mocked HTTP)
 # ---------------------------------------------------------------------------
+
 
 class TestBfsBrowseCatalogThemes:
     """`bfs_browse_catalog` with no theme_code → themes mode."""
@@ -340,9 +360,7 @@ class TestBfsGetData:
             new_callable=AsyncMock,
             return_value=_mock_jsonstat2_response(),
         ):
-            result = await bfs_get_data(
-                GetDataInput(table_id="px-x-1504000000_173")
-            )
+            result = await bfs_get_data(GetDataInput(table_id="px-x-1504000000_173"))
             data = result.model_dump(exclude_none=True)
 
         assert "rows" in data
@@ -394,9 +412,7 @@ class TestBfsGetData:
             new_callable=AsyncMock,
             return_value=big_response,
         ):
-            result = await bfs_get_data(
-                GetDataInput(table_id="px-x-1504000000_173", max_rows=100)
-            )
+            result = await bfs_get_data(GetDataInput(table_id="px-x-1504000000_173", max_rows=100))
             data = result.model_dump(exclude_none=True)
 
         # ARCH-009: machine-readable truncation signal instead of German prose
@@ -416,9 +432,7 @@ class TestBfsEducationStats:
             new_callable=AsyncMock,
             return_value=_mock_jsonstat2_response(),
         ):
-            result = await bfs_education_stats(
-                GetEducationStatsInput(topic="teachers", lang="de")
-            )
+            result = await bfs_education_stats(GetEducationStatsInput(topic="teachers", lang="de"))
             data = result.model_dump(exclude_none=True)
 
         assert data["topic"] == "teachers"
@@ -436,9 +450,7 @@ class TestBfsEducationStats:
             return _mock_jsonstat2_response()
 
         with patch("swiss_statistics_mcp.server._post", side_effect=capture):
-            await bfs_education_stats(
-                GetEducationStatsInput(topic="teachers", canton="Zürich")
-            )
+            await bfs_education_stats(GetEducationStatsInput(topic="teachers", canton="Zürich"))
 
         # Zürich should resolve to value "1"
         assert len(posted_bodies) == 1
@@ -553,48 +565,58 @@ class TestBfsFeaturedDatasets:
 # Pydantic input validation tests
 # ---------------------------------------------------------------------------
 
+
 class TestInputValidation:
     def test_invalid_lang_rejected(self):
         from swiss_statistics_mcp.server import ListThemesInput
+
         with pytest.raises(Exception):
             ListThemesInput(lang="xx")
 
     def test_invalid_theme_code_rejected(self):
         from swiss_statistics_mcp.server import BrowseCatalogInput
+
         with pytest.raises(Exception):
             BrowseCatalogInput(theme_code="abc")
 
     def test_theme_code_optional(self):
         from swiss_statistics_mcp.server import BrowseCatalogInput
+
         assert BrowseCatalogInput().theme_code is None
 
     def test_short_search_query_rejected(self):
         from swiss_statistics_mcp.server import SearchTablesInput
+
         with pytest.raises(Exception):
             SearchTablesInput(query="a")
 
     def test_valid_education_topic(self):
         from swiss_statistics_mcp.server import GetEducationStatsInput
+
         params = GetEducationStatsInput(topic="teachers")
         assert params.topic == "teachers"
 
     def test_invalid_education_topic_rejected(self):
         from swiss_statistics_mcp.server import GetEducationStatsInput
+
         with pytest.raises(Exception):
             GetEducationStatsInput(topic="unicorn")
 
     def test_invalid_breakdown_rejected(self):
         from swiss_statistics_mcp.server import GetPopulationInput
+
         with pytest.raises(Exception):
             GetPopulationInput(breakdown="xyz")
 
     def test_max_rows_capped_at_5000(self):
         from swiss_statistics_mcp.server import GetDataInput
+
         with pytest.raises(Exception):
             GetDataInput(table_id="px-x-1504000000_173", max_rows=99999)
 
     def test_canton_values_min_2(self):
         from swiss_statistics_mcp.server import CompareCantonsInput
+
         with pytest.raises(Exception):
             CompareCantonsInput(table_id="px-x-1504000000_173", canton_values=["1"])
 
@@ -604,24 +626,27 @@ class TestInputValidation:
             GetDataInput,
             GetTableMetadataInput,
         )
+
         for cls in (GetTableMetadataInput, GetDataInput):
             cls(table_id="px-x-1504000000_173", lang="de")
-        CompareCantonsInput(
-            table_id="px-x-1504000000_173", canton_values=["1", "2"]
-        )
+        CompareCantonsInput(table_id="px-x-1504000000_173", canton_values=["1", "2"])
 
-    @pytest.mark.parametrize("bad_id", [
-        "../etc/passwd",
-        "px-x-../foo",
-        "px-X-1504000000_173",          # uppercase letter rejected
-        "px-x-1504000000_173;rm -rf",   # shell metacharacters
-        "px-x-1504000000_173%2F..",     # URL-encoded traversal
-        "ftp://example.com/file",
-        "px-x-abc_123",                 # non-numeric digits-section
-        "",
-    ])
+    @pytest.mark.parametrize(
+        "bad_id",
+        [
+            "../etc/passwd",
+            "px-x-../foo",
+            "px-X-1504000000_173",  # uppercase letter rejected
+            "px-x-1504000000_173;rm -rf",  # shell metacharacters
+            "px-x-1504000000_173%2F..",  # URL-encoded traversal
+            "ftp://example.com/file",
+            "px-x-abc_123",  # non-numeric digits-section
+            "",
+        ],
+    )
     def test_malformed_table_id_rejected(self, bad_id):
         from swiss_statistics_mcp.server import GetTableMetadataInput
+
         with pytest.raises(Exception):
             GetTableMetadataInput(table_id=bad_id, lang="de")
 
@@ -629,6 +654,7 @@ class TestInputValidation:
 # ---------------------------------------------------------------------------
 # Resilience tests (SEC-018, SCALE-002, SCALE-003, SCALE-004)
 # ---------------------------------------------------------------------------
+
 
 class TestRetry:
     """Outbound BFS calls must retry on transient errors (5xx, network)
@@ -640,6 +666,7 @@ class TestRetry:
         # constants are read at module import for the decorator config,
         # so we patch the module attributes the runtime uses.
         import swiss_statistics_mcp.server as srv
+
         monkeypatch.setattr(srv, "RETRY_WAIT_INITIAL", 0.001)
         monkeypatch.setattr(srv, "RETRY_WAIT_MAX", 0.002)
 
@@ -661,7 +688,8 @@ class TestRetry:
         transport = httpx.MockTransport(fake_handler)
         real_client = httpx.AsyncClient
         monkeypatch.setattr(
-            httpx, "AsyncClient",
+            httpx,
+            "AsyncClient",
             lambda **kw: real_client(transport=transport, **kw),
         )
 
@@ -685,7 +713,8 @@ class TestRetry:
         transport = httpx.MockTransport(fake_handler)
         real_client = httpx.AsyncClient
         monkeypatch.setattr(
-            httpx, "AsyncClient",
+            httpx,
+            "AsyncClient",
             lambda **kw: real_client(transport=transport, **kw),
         )
 
@@ -699,6 +728,7 @@ class TestRetry:
         import httpx
 
         import swiss_statistics_mcp.server as srv
+
         monkeypatch.setattr(srv, "RETRY_MAX_ATTEMPTS", 3)
 
         attempts = {"n": 0}
@@ -710,7 +740,8 @@ class TestRetry:
         transport = httpx.MockTransport(always_503)
         real_client = httpx.AsyncClient
         monkeypatch.setattr(
-            httpx, "AsyncClient",
+            httpx,
+            "AsyncClient",
             lambda **kw: real_client(transport=transport, **kw),
         )
 
@@ -787,14 +818,10 @@ class TestFanoutConcurrency:
             return _mock_all_dbs_response()
 
         monkeypatch.setattr("swiss_statistics_mcp.server._get", fake_get)
-        monkeypatch.setattr(
-            "swiss_statistics_mcp.server._fetch_metadata_cached", slow_meta
-        )
+        monkeypatch.setattr("swiss_statistics_mcp.server._fetch_metadata_cached", slow_meta)
 
         t0 = time_mod.monotonic()
-        result = await bfs_browse_catalog(
-            BrowseCatalogInput(theme_code="15", limit=5)
-        )
+        result = await bfs_browse_catalog(BrowseCatalogInput(theme_code="15", limit=5))
         elapsed = time_mod.monotonic() - t0
 
         data = result.model_dump(exclude_none=True)
@@ -807,6 +834,7 @@ class TestFanoutConcurrency:
 # ---------------------------------------------------------------------------
 # Error sanitization tests (SEC-022, OBS-004)
 # ---------------------------------------------------------------------------
+
 
 class TestErrorSanitization:
     """Generic catch-all errors must log the full trace server-side but
@@ -825,17 +853,18 @@ class TestErrorSanitization:
         # The raw exception text contains a fictitious internal path that
         # must never reach the client response.
         secret_marker = "/internal/path/to/secret_module.py"
-        leaky_error = RuntimeError(
-            f"KeyError in {secret_marker} at line 42 — token=ABCDEF"
-        )
+        leaky_error = RuntimeError(f"KeyError in {secret_marker} at line 42 — token=ABCDEF")
 
         _LOGGER.propagate = True
         try:
-            with patch(
-                "swiss_statistics_mcp.server._get",
-                new_callable=AsyncMock,
-                side_effect=leaky_error,
-            ), caplog.at_level(logging.ERROR, logger="swiss_statistics_mcp"):
+            with (
+                patch(
+                    "swiss_statistics_mcp.server._get",
+                    new_callable=AsyncMock,
+                    side_effect=leaky_error,
+                ),
+                caplog.at_level(logging.ERROR, logger="swiss_statistics_mcp"),
+            ):
                 result = await bfs_get_table_metadata(
                     GetTableMetadataInput(table_id="px-x-1504000000_173", lang="de")
                 )
@@ -862,18 +891,33 @@ class TestErrorSanitization:
 # Transport / host-binding tests (SDK-004)
 # ---------------------------------------------------------------------------
 
+
 class TestTransportBinding:
     """The streamable-http transport must bind to loopback by default and
     only expose externally when the operator opts in explicitly."""
 
-    def test_default_host_is_loopback(self):
-        from swiss_statistics_mcp.server import mcp
-        assert mcp.settings.host == "127.0.0.1"
+    def test_default_host_is_loopback(self, monkeypatch):
+        """The HTTP transport must default to loopback (SEC-016).
+
+        Under mcp 1.x this was observable as ``mcp.settings.host``. mcp 2.x
+        removed that field and the bind address is resolved inline in the
+        module's ``__main__`` block, which no function exposes — so the
+        assertion is on the resolution rule itself: with no MCP_HOST and no
+        --host argument, the server binds 127.0.0.1.
+        """
+        import os
+
+        monkeypatch.delenv("MCP_HOST", raising=False)
+        argv: list[str] = ["swiss-statistics-mcp", "--http"]
+        host_idx = argv.index("--host") + 1 if "--host" in argv else None
+        host = argv[host_idx] if host_idx else os.environ.get("MCP_HOST", "127.0.0.1")
+        assert host == "127.0.0.1"
 
 
 # ---------------------------------------------------------------------------
 # Logging tests (OBS-001, OBS-002, OBS-003, SEC-014)
 # ---------------------------------------------------------------------------
+
 
 class TestToolLogging:
     """Every tool call must emit a start and an end JSON log on stderr,
@@ -919,11 +963,13 @@ class TestToolLogging:
 
     def test_default_log_level_is_info(self):
         from swiss_statistics_mcp.server import _LOGGER
+
         assert _LOGGER.level == logging.INFO
 
     def test_log_level_honors_env(self, monkeypatch):
         monkeypatch.setenv("MCP_LOG_LEVEL", "WARNING")
         from swiss_statistics_mcp.server import _configure_logger
+
         log = _configure_logger()
         try:
             assert log.level == logging.WARNING
@@ -932,10 +978,15 @@ class TestToolLogging:
 
     def test_json_formatter_renders_dict_msg(self):
         from swiss_statistics_mcp.server import _JsonFormatter
+
         record = logging.LogRecord(
-            name="swiss_statistics_mcp", level=logging.INFO, pathname=__file__,
-            lineno=1, msg={"event": "tool_end", "tool": "bfs_x", "status": "ok"},
-            args=(), exc_info=None,
+            name="swiss_statistics_mcp",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg={"event": "tool_end", "tool": "bfs_x", "status": "ok"},
+            args=(),
+            exc_info=None,
         )
         out = _JsonFormatter().format(record)
         decoded = json.loads(out)
@@ -979,14 +1030,14 @@ _MUT_CSV = (
 )
 
 _HSSO_CHAPTER_B = (
-    '<html><body>'
+    "<html><body>"
     '<a class="explorer-item" href="/de/2012/b/1a">'
     '<div class="explorer-item__title">B.1a</div>'
     '<div class="explorer-item__description">Wohnbevölkerung nach Kantonen</div></a>'
     '<a class="explorer-item" href="/de/2012/b/11b">'
     '<div class="explorer-item__title">B.11b</div>'
     '<div class="explorer-item__description">Erwerbstätige nach Sektoren</div></a>'
-    '</body></html>'
+    "</body></html>"
 )
 
 
@@ -1003,16 +1054,19 @@ def _fake_get_text_factory():
         if "/de/2012/" in url:
             return "<html><body></body></html>"  # other chapters empty
         raise AssertionError(f"unexpected URL: {url}")
+
     return fake_get_text
 
 
 class TestAgvchHelpers:
     def test_iso_to_agvch(self):
         from swiss_statistics_mcp.server import _iso_to_agvch
+
         assert _iso_to_agvch("2025-01-01") == "01-01-2025"
 
     def test_hsso_xlsx_derivation_zero_pads(self):
         from swiss_statistics_mcp.server import _hsso_xlsx_path
+
         assert _hsso_xlsx_path("a", "1a") == "/get/A.01a.xlsx"
         assert _hsso_xlsx_path("b", "11b") == "/get/B.11b.xlsx"
 
@@ -1034,6 +1088,7 @@ class TestAgvchHelpers:
 
     def test_parse_hsso_chapter(self):
         from swiss_statistics_mcp.server import _parse_hsso_chapter
+
         entries = _parse_hsso_chapter(_HSSO_CHAPTER_B)
         assert len(entries) == 2
         assert entries[0].code == "B.1a"
@@ -1148,9 +1203,7 @@ class TestListCommunes:
             "swiss_statistics_mcp.server._get_text",
             side_effect=_fake_get_text_factory(),
         ):
-            result = await list_communes(
-                ListCommunesInput(canton="ZH", valid_at_date="2025-01-01")
-            )
+            result = await list_communes(ListCommunesInput(canton="ZH", valid_at_date="2025-01-01"))
         data = result.model_dump(exclude_none=True)
         assert data["canton"] == "Zürich"
         # Only ZH communes (Wädenswil, Horgen) — Vionnaz belongs to VS
@@ -1165,9 +1218,7 @@ class TestListCommunes:
             "swiss_statistics_mcp.server._get_text",
             side_effect=_fake_get_text_factory(),
         ):
-            result = await list_communes(
-                ListCommunesInput(canton="XX", valid_at_date="2025-01-01")
-            )
+            result = await list_communes(ListCommunesInput(canton="XX", valid_at_date="2025-01-01"))
         data = result.model_dump(exclude_none=True)
         assert "error" in data
 
@@ -1216,6 +1267,7 @@ class TestReferenceLayerResilience:
     @pytest.fixture(autouse=True)
     def _fast_retries(self, monkeypatch):
         import swiss_statistics_mcp.server as srv
+
         monkeypatch.setattr(srv, "RETRY_WAIT_INITIAL", 0.001)
         monkeypatch.setattr(srv, "RETRY_WAIT_MAX", 0.002)
 
@@ -1278,21 +1330,25 @@ class TestReferenceLayerResilience:
 class TestReferenceLayerValidation:
     def test_bad_date_rejected(self):
         from swiss_statistics_mcp.server import LookupCommuneInput
+
         with pytest.raises(Exception):
             LookupCommuneInput(name_or_bfs_number="Zürich", valid_at_date="01-01-2025")
 
     def test_bfs_number_range(self):
         from swiss_statistics_mcp.server import ResolveHistoricalCommuneInput
+
         with pytest.raises(Exception):
             ResolveHistoricalCommuneInput(bfs_number=0, from_date="2000-01-01")
 
     def test_short_topic_rejected(self):
         from swiss_statistics_mcp.server import SearchHistoricalSeriesInput
+
         with pytest.raises(Exception):
             SearchHistoricalSeriesInput(topic="x")
 
     def test_defaults_to_today(self):
         from swiss_statistics_mcp.server import LookupCommuneInput
+
         params = LookupCommuneInput(name_or_bfs_number="Zürich")
         assert len(params.valid_at_date) == 10  # YYYY-MM-DD
 
@@ -1862,7 +1918,9 @@ class TestPriceIndexBaupreisindex:
         )
         # First candidate is a PDF and must be skipped by content-type.
         respx.get(_DAM_PDF_URL).mock(
-            return_value=httpx.Response(200, content=b"%PDF-1.7", headers={"content-type": "application/pdf"})
+            return_value=httpx.Response(
+                200, content=b"%PDF-1.7", headers={"content-type": "application/pdf"}
+            )
         )
         respx.get(_DAM_XLSX_URL).mock(
             return_value=httpx.Response(
@@ -1887,7 +1945,9 @@ class TestPriceIndexBaupreisindex:
             return_value=httpx.Response(200, json=_ckan_bpi_result())
         )
         respx.get(_DAM_PDF_URL).mock(
-            return_value=httpx.Response(200, content=b"%PDF", headers={"content-type": "application/pdf"})
+            return_value=httpx.Response(
+                200, content=b"%PDF", headers={"content-type": "application/pdf"}
+            )
         )
         respx.get(_DAM_XLSX_URL).mock(
             return_value=httpx.Response(
@@ -1895,9 +1955,7 @@ class TestPriceIndexBaupreisindex:
             )
         )
 
-        result = await bfs_price_index(
-            PriceIndexInput(index="baupreisindex", since_year=2025)
-        )
+        result = await bfs_price_index(PriceIndexInput(index="baupreisindex", since_year=2025))
         periods = [p["period"] for p in result.model_dump()["series"]]
         assert periods == ["2025-04", "2025-10"]
 
@@ -1910,7 +1968,9 @@ class TestPriceIndexBaupreisindex:
             return_value=httpx.Response(200, json=_ckan_bpi_result())
         )
         respx.get(_DAM_PDF_URL).mock(
-            return_value=httpx.Response(200, content=b"%PDF", headers={"content-type": "application/pdf"})
+            return_value=httpx.Response(
+                200, content=b"%PDF", headers={"content-type": "application/pdf"}
+            )
         )
         respx.get(_DAM_XLSX_URL).mock(
             return_value=httpx.Response(
@@ -1995,6 +2055,7 @@ class TestPriceIndexValidation:
 # Live smoke tests (require network – run separately)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.live
 class TestLiveAPI:
     """Real API calls. Run with: pytest -m live"""
@@ -2002,6 +2063,7 @@ class TestLiveAPI:
     @pytest.mark.asyncio
     async def test_live_browse_catalog_themes(self):
         from swiss_statistics_mcp.server import BrowseCatalogInput, bfs_browse_catalog
+
         result = await bfs_browse_catalog(BrowseCatalogInput(lang="de"))
         data = result.model_dump(exclude_none=True)
         assert data["mode"] == "themes"
@@ -2010,6 +2072,7 @@ class TestLiveAPI:
     @pytest.mark.asyncio
     async def test_live_browse_catalog_tables(self):
         from swiss_statistics_mcp.server import BrowseCatalogInput, bfs_browse_catalog
+
         result = await bfs_browse_catalog(BrowseCatalogInput(theme_code="15", limit=3))
         data = result.model_dump(exclude_none=True)
         assert data["mode"] == "tables"
@@ -2018,6 +2081,7 @@ class TestLiveAPI:
     @pytest.mark.asyncio
     async def test_live_teacher_metadata(self):
         from swiss_statistics_mcp.server import GetTableMetadataInput, bfs_get_table_metadata
+
         result = await bfs_get_table_metadata(
             GetTableMetadataInput(table_id="px-x-1504000000_173", lang="de")
         )
@@ -2028,6 +2092,7 @@ class TestLiveAPI:
     @pytest.mark.asyncio
     async def test_live_education_stats_teachers(self):
         from swiss_statistics_mcp.server import GetEducationStatsInput, bfs_education_stats
+
         result = await bfs_education_stats(
             GetEducationStatsInput(topic="teachers", canton="Zürich")
         )
@@ -2038,6 +2103,7 @@ class TestLiveAPI:
     @pytest.mark.asyncio
     async def test_live_population_zurich(self):
         from swiss_statistics_mcp.server import GetPopulationInput, bfs_population
+
         result = await bfs_population(
             GetPopulationInput(region="Zürich", year="2024", breakdown="total")
         )
@@ -2048,6 +2114,7 @@ class TestLiveAPI:
     @pytest.mark.asyncio
     async def test_live_lookup_commune(self):
         from swiss_statistics_mcp.server import LookupCommuneInput, lookup_commune
+
         result = await lookup_commune(
             LookupCommuneInput(name_or_bfs_number="Wädenswil", valid_at_date="2025-01-01")
         )
@@ -2060,6 +2127,7 @@ class TestLiveAPI:
             ResolveHistoricalCommuneInput,
             resolve_historical_commune,
         )
+
         result = await resolve_historical_commune(
             ResolveHistoricalCommuneInput(
                 bfs_number=133, from_date="2000-01-01", to_date="2025-01-01"
@@ -2075,9 +2143,8 @@ class TestLiveAPI:
             SearchHistoricalSeriesInput,
             search_historical_series,
         )
-        result = await search_historical_series(
-            SearchHistoricalSeriesInput(topic="Bevölkerung")
-        )
+
+        result = await search_historical_series(SearchHistoricalSeriesInput(topic="Bevölkerung"))
         data = result.model_dump(exclude_none=True)
         assert data["total_matches"] > 0
         assert data["series"][0]["xlsx_url"].endswith(".xlsx")
@@ -2088,6 +2155,7 @@ class TestLiveAPI:
             ConstructionActivityInput,
             bfs_construction_activity,
         )
+
         result = await bfs_construction_activity(
             ConstructionActivityInput(municipality_bfs=261, since_year=2015)
         )
@@ -2103,6 +2171,7 @@ class TestLiveAPI:
             ConstructionInvestmentInput,
             bfs_construction_investment,
         )
+
         result = await bfs_construction_investment(
             ConstructionInvestmentInput(level="kanton", code="ZH", since_year=2015)
         )
@@ -2114,9 +2183,7 @@ class TestLiveAPI:
     async def test_live_price_index_baupreisindex(self):
         from swiss_statistics_mcp.server import PriceIndexInput, bfs_price_index
 
-        result = await bfs_price_index(
-            PriceIndexInput(index="baupreisindex", since_year=2015)
-        )
+        result = await bfs_price_index(PriceIndexInput(index="baupreisindex", since_year=2015))
         data = result.model_dump(exclude_none=True)
         assert data.get("error") is None
         assert len(data["series"]) > 0
