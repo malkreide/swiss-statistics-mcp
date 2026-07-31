@@ -7,15 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-31
+
+### Changed
+
+- **Migrated to the `mcp` Python SDK 2.x.** `mcp[cli]` moves from `>=1.28.1,<2`
+  to `>=2.0.0,<3`, `FastMCP` → `MCPServer` (`mcp.server.mcpserver`). The lower
+  bound is hard: 2.0.0 removed `mcp.server.fastmcp` without a compatibility
+  shim, so this code no longer runs on 1.x, and an open range would let a
+  resolver pick a version that fails at import.
+
+  This landed in `20a6d41` without a changelog entry, which is why the section
+  below still described the opposite fix. Recorded here so the release notes
+  match what actually ships.
+
 ### Fixed
 
-- **Capped `mcp` at `<2`.** `mcp` 2.0.0, published 2026-07-28, removed
-  `mcp.server.fastmcp` — the module this server imports. With the previous
-  unbounded `>=1.28.1` every fresh resolve picked 2.0.0 and failed at import
-  with `ModuleNotFoundError`, in CI and for anyone running `pip install` alike.
-  Verified in both directions: 2.0.0 fails, `<2` resolves to 1.29.0 and imports
-  cleanly. Migrating to the 2.x API (`mcp.server.mcpserver`) stays a separate,
-  deliberate piece of work.
+- **The published 0.6.0 dies on a fresh install.** It imports
+  `mcp.server.fastmcp`, which `mcp` 2.0.0 removed on 2026-07-28. With its
+  declared range open at the top, every new `pip install swiss-statistics-mcp`
+  resolved to 2.0.0 and failed with `ModuleNotFoundError` before the server
+  could start. The migration above fixes it — but the fix sat on `main` under
+  the *same version number* PyPI was already serving, so nothing could be
+  published and every fresh install kept breaking. Hence this bump.
+
+  Verified: `main` installed into a clean venv resolves `mcp` 2.0.0, imports
+  and starts.
+
+### Superseded
+
+- An earlier commit (`9b7d7a0`) announced *capping* `mcp` at `<2` as the fix.
+  That was correct when written and is no longer what the code does — the
+  migration replaced it. Noted rather than deleted: the cap reached nobody, and
+  a changelog that quietly rewrites its own history is worth less than one that
+  shows the correction.
 
 ## [0.6.0] - 2026-07-25
 
