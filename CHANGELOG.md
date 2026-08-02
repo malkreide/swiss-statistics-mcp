@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-08-02
+
+### Fixed
+
+- **`tenacity` carried no upper bound, and the index already serves a major past
+  the floor.** The declared range was `tenacity>=8.0.0`; PyPI has been serving
+  `9.1.4`. The artefact does not change — the resolver's answer to the next
+  fresh install does, and that is exactly how `swiss-energy-mcp` 0.3.3 became
+  uninstallable when `mcp` 2.0.0 removed the module it imported.
+
+  Now `tenacity>=8.0.0,<10`. The bound is measured rather than guessed: this package
+  installs and imports against `tenacity 9.1.4` today, so the cap admits what
+  demonstrably works and stops only the next, unknown major.
+
+A dependency range only reaches users through a new release, hence the
+version bump. No code changed.
+
 ## [0.7.0] - 2026-07-31
 
 ### Changed
