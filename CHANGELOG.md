@@ -7,7 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-08-03
+
 ### Fixed
+
+- **The package became uninstallable: every file of every version was deleted
+  from PyPI.** `pip install swiss-statistics-mcp` resolved to nothing — the
+  project page stayed up, but its file index was empty for 0.1.0, 0.2.0, 0.2.3,
+  0.6.0, 0.7.0 and 0.7.1 alike.
+
+  PyPI permanently retires a deleted filename. Re-uploading 0.7.1, even
+  byte-identical, is answered with `400 This filename was previously used by a
+  file that has since been deleted`. Those six versions cannot come back, by
+  anyone, ever — so the only route to an installable package is a version number
+  that has never been used.
+
+  0.7.2 is that number. It is **built from the same source as 0.7.1** and carries
+  no functional change: same tools, same dependency ranges, same behaviour. Only
+  the version differs. Anyone pinned to `==0.7.1` (or to any earlier version)
+  must move to `==0.7.2`; a range such as `>=0.7.0` resolves on its own.
+
+### Changed
 
 - **Two workflows raced to publish the same release, and only one of them was
   the one PyPI trusts.** `release.yml` (tag push) and `publish.yml`
