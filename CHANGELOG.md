@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Two workflows raced to publish the same release, and only one of them was
+  the one PyPI trusts.** `release.yml` (tag push) and `publish.yml`
+  (`release: published`) both ran a `pypi-publish` job against the `pypi`
+  environment, but the PyPI Trusted Publisher names exactly one workflow file.
+  `publish.yml` matched and uploaded; `release.yml` failed every release with
+  `invalid-publisher`, which is why v0.6.0, v0.7.0 and v0.7.1 all show a red
+  Release run despite the package reaching PyPI.
+
+  The duplication also hid a dead path: `release.yml` creates the GitHub Release
+  with the `GITHUB_TOKEN`, and releases created that way do not trigger further
+  workflow runs. A tag push — the documented way to cut a release — would
+  therefore never have started `publish.yml`, and nothing would have been
+  published. The releases so far only worked because they were created by hand
+  in the web UI.
+
+  `publish.yml` is removed and its MCP Registry job folded into `release.yml`,
+  which is now the single publish path: build → PyPI → GitHub Release → MCP
+  Registry, all from the tag push. `RELEASING.md` gains a claim-by-claim
+  troubleshooting table for `invalid-publisher`.
+
+  Requires a one-time change on PyPI: the Trusted Publisher's workflow name must
+  be `release.yml` (it was `publish.yml`).
+
 ## [0.7.1] - 2026-08-02
 
 ### Fixed

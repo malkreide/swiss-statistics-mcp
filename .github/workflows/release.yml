@@ -5,8 +5,15 @@ name: Release
 #   git tag v0.6.0 && git push origin v0.6.0
 #
 # That triggers this workflow, which builds the package, publishes it to PyPI
-# via Trusted Publishing (OIDC — no stored token), and creates the matching
-# GitHub Release. See RELEASING.md for the one-time PyPI setup.
+# via Trusted Publishing (OIDC — no stored token), creates the matching GitHub
+# Release, and publishes the server to the MCP Registry.
+#
+# This is the ONLY workflow that publishes. It deliberately triggers on the tag
+# push rather than on `release: published`, because the GitHub Release created
+# below is created with the GITHUB_TOKEN, and releases created that way do not
+# trigger further workflow runs.
+#
+# See RELEASING.md for the one-time PyPI setup.
 
 on:
   push:
@@ -41,8 +48,8 @@ jobs:
   pypi-publish:
     needs: build
     runs-on: ubuntu-latest
-    # Configure a matching Trusted Publisher on PyPI for this environment
-    # (see RELEASING.md). This is the only job that needs the one-time setup.
+    # The PyPI Trusted Publisher must name THIS workflow file (release.yml) and
+    # this environment (pypi). A mismatch fails with `invalid-publisher`.
     environment:
       name: pypi
       url: https://pypi.org/project/swiss-statistics-mcp/
@@ -61,7 +68,7 @@ jobs:
   github-release:
     needs: build
     # Independent of pypi-publish, so the GitHub Release is always created even
-    # before Trusted Publishing is configured (that job can be re-run later).
+    # if Trusted Publishing is misconfigured (that job can be re-run later).
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -77,3 +84,31 @@ jobs:
         with:
           generate_release_notes: true
           files: dist/*
+
+  publish-mcp:
+    name: Publish to MCP Registry
+    # Runs only after PyPI has the package, since the registry entry points at
+    # the published PyPI artefact.
+    needs: pypi-publish
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # OIDC token for MCP Registry Trusted Publishing
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Sync server.json version to the release tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          jq --arg v "$VERSION" '.version = $v | .packages[0].version = $v' \
+            server.json > server.tmp && mv server.tmp server.json
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate to MCP Registry (GitHub OIDC)
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish server to MCP Registry
+        run: ./mcp-publisher publish
