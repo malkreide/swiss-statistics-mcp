@@ -9,7 +9,7 @@ Stellen, die dieselbe Nummer wiederholen:
     `packages[*].version`
   - die Versions-Badges der READMEs
 
-Hintergrund: `publish.yml` synchronisiert `server.json` beim Veröffentlichen
+Hintergrund: `release.yml` synchronisiert `server.json` beim Veröffentlichen
 aus dem Tag-Namen — die *committete* Version wirkt also nie auf das
 publizierte Artefakt und fällt deshalb nicht auf, wenn sie veraltet. Die
 README-Badges erzwingt überhaupt nichts.
@@ -188,7 +188,7 @@ def main() -> None:
         for where, value in mismatches:
             print(f"  {where} = {value!r}", file=sys.stderr)
         print(
-            "\nAlle Stellen im selben Commit bumpen. Hinweis: publish.yml "
+            "\nAlle Stellen im selben Commit bumpen. Hinweis: release.yml "
             "überschreibt server.json beim Veröffentlichen ohnehin aus dem Tag — "
             "die committete Version bleibt trotzdem die, die Menschen lesen.",
             file=sys.stderr,
