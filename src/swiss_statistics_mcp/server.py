@@ -20,12 +20,14 @@ import io
 import json
 import logging
 import os
+import random
 import re
 import sys
 import time
 import uuid
 from collections.abc import Callable
-from datetime import date
+from datetime import UTC, date, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any, Literal
 from urllib.parse import quote_plus, urlencode
 
@@ -37,7 +39,6 @@ from tenacity import (
     RetryError,
     retry_if_exception,
     stop_after_attempt,
-    wait_exponential,
 )
 
 # ---------------------------------------------------------------------------
@@ -67,6 +68,31 @@ BFS_TABLE_ID_PATTERN = r"^px-[a-z]-\d{8,12}_\d{1,4}$"
 RETRY_MAX_ATTEMPTS = int(os.environ.get("MCP_RETRY_MAX_ATTEMPTS", "3"))
 RETRY_WAIT_INITIAL = float(os.environ.get("MCP_RETRY_WAIT_INITIAL", "0.5"))
 RETRY_WAIT_MAX = float(os.environ.get("MCP_RETRY_WAIT_MAX", "4.0"))
+
+# Ceiling on the WHOLE call — every attempt and every wait together (ARCH-014).
+# An attempt count is not a bound: three attempts against an upstream that
+# takes the full HTTP_TIMEOUT (30s) to give up is a minute and a half inside
+# one tool call, and RETRY_MAX_ATTEMPTS never says so. Worse, the limit that
+# matters is not ours — the caller has its own timeout, and past it nobody is
+# listening: the work continues, the load lands on the source, and the result
+# goes nowhere. The anchor is measured, not guessed: the Python MCP SDK ships
+# MCP_DEFAULT_TIMEOUT = 30.0, so 25s leaves headroom for framing and parsing.
+RETRY_TOTAL_BUDGET = float(os.environ.get("MCP_RETRY_TOTAL_BUDGET", "25.0"))
+
+# Jitter spread. `wait_exponential` is deterministic: every client that hit the
+# same outage waits the identical 0.5s / 1s / 2s and comes back in lockstep, so
+# the load returns as a wave exactly when the source recovers — the retry storm
+# extends the outage it was meant to bridge.
+RETRY_JITTER_SPREAD = 0.5  # exponential delays land in [0.5x, 1.5x]
+
+# Applied on top of a `Retry-After`, deliberately one-sided: the source told us
+# when to come back, so later is polite and earlier ignores the value read.
+RETRY_AFTER_JITTER = 0.25  # lands in [1.0x, 1.25x]
+
+# Statuses that carry a meaningful `Retry-After` (RFC 9110 section 10.2.3). A
+# 429 or 503 is the source answering the very question the backoff curve is
+# guessing at.
+RETRY_AFTER_STATUSES = frozenset({429, 503})
 
 # ---------------------------------------------------------------------------
 # Reference layer: Amtliches Gemeindeverzeichnis (BFS AGVCH) + HSSO
@@ -285,26 +311,86 @@ def _is_transient(exc: BaseException) -> bool:
     return False
 
 
+def _parse_retry_after(exc: BaseException | None) -> float | None:
+    """Seconds to wait per the response's ``Retry-After``, or ``None``.
+
+    RFC 9110 section 10.2.3 allows two forms — delta-seconds (``120``) and an
+    HTTP-date. Both appear in the wild, so both are read. Anything unparseable
+    yields ``None`` and the caller falls back to its own curve: a malformed
+    header must not become a crash on the error path, which is the one path
+    already going badly.
+    """
+    resp = getattr(exc, "response", None)
+    if resp is None or resp.status_code not in RETRY_AFTER_STATUSES:
+        return None
+    raw = (resp.headers.get("retry-after") or "").strip()
+    if not raw:
+        return None
+    if raw.isdigit():
+        return float(raw)
+    try:
+        when = parsedate_to_datetime(raw)
+    except (TypeError, ValueError):
+        return None
+    if when.tzinfo is None:  # RFC 9110 dates are GMT; a naive one means UTC
+        when = when.replace(tzinfo=UTC)
+    return max(0.0, (when - datetime.now(UTC)).total_seconds())  # past date -> now
+
+
+def _retry_wait(retry_state: Any) -> float:
+    """Seconds tenacity should wait before the next attempt.
+
+    Replaces `wait_exponential`, which has neither jitter nor any notion of
+    `Retry-After`. The source's own answer beats our guess; everything is
+    spread, and the cap is applied last.
+
+    The cap wraps the jitter and not the other way round. ``min(cap, base) *
+    jitter`` and ``min(cap, base * jitter)`` both contain a cap and a jitter;
+    only the second is bounded — a value capped at 4s and then multiplied by up
+    to 1.5 lands at 6s, and the constant would claim a ceiling it does not
+    hold. That ordering shipped in six portfolio servers.
+
+    The module globals are read at call time on purpose: tests lower
+    `RETRY_WAIT_INITIAL` with `monkeypatch.setattr`, and a value bound at
+    import would ignore them.
+    """
+    exc = retry_state.outcome.exception() if retry_state.outcome else None
+    hinted = _parse_retry_after(exc)
+    if hinted is not None:
+        return min(hinted * (1.0 + random.random() * RETRY_AFTER_JITTER), RETRY_WAIT_MAX)
+    attempt = max(1, retry_state.attempt_number)
+    return min(
+        RETRY_WAIT_INITIAL
+        * 2 ** (attempt - 1)
+        * (1.0 - RETRY_JITTER_SPREAD + random.random() * 2 * RETRY_JITTER_SPREAD),
+        RETRY_WAIT_MAX,
+    )
+
+
 async def _retrying_http(coro_factory: Callable[[], Any]) -> Any:
     """Run `coro_factory()` with retry on transient errors.
 
     `coro_factory` is a zero-arg callable returning a coroutine; we call it
     fresh on each retry so a new `AsyncClient` is opened per attempt
     (httpx clients are not safe to reuse after errors).
+
+    The whole call is bounded by :data:`RETRY_TOTAL_BUDGET` seconds of wall
+    clock. `HTTP_TIMEOUT` is *not* a budget: httpx bounds each operation and
+    its read timeout restarts with every chunk, so a slowly trickling response
+    outlives any ceiling without a single read expiring. `stop_after_delay`
+    would not do it either — it declines to start a *new* attempt but cannot
+    cut one already running.
     """
     try:
-        async for attempt in AsyncRetrying(
-            stop=stop_after_attempt(RETRY_MAX_ATTEMPTS),
-            wait=wait_exponential(
-                multiplier=RETRY_WAIT_INITIAL,
-                min=RETRY_WAIT_INITIAL,
-                max=RETRY_WAIT_MAX,
-            ),
-            retry=retry_if_exception(_is_transient),
-            reraise=True,
-        ):
-            with attempt:
-                return await coro_factory()
+        async with asyncio.timeout(RETRY_TOTAL_BUDGET):
+            async for attempt in AsyncRetrying(
+                stop=stop_after_attempt(RETRY_MAX_ATTEMPTS),
+                wait=_retry_wait,
+                retry=retry_if_exception(_is_transient),
+                reraise=True,
+            ):
+                with attempt:
+                    return await coro_factory()
     except RetryError as e:  # pragma: no cover — reraise=True usually raises the wrapped exc
         raise e.last_attempt.exception() from e
 

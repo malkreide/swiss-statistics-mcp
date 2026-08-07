@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Retry policy against the upstream: spread, obedient and time-bounded
+  (`ARCH-014`).** A portfolio run of the audit catalogue on 2026-08-07 read
+  `_retrying_http` by hand. **What** it retries was already right — 5xx, 429
+  and network errors; other 4xx surfaced immediately. Three properties were
+  missing, and all three are consequences of one line: `wait_exponential`.
+
+  | Property | Before | Now |
+  |---|---|---|
+  | Jitter | none — `wait_exponential` is deterministic | spread into `[0.5x, 1.5x]` |
+  | `Retry-After` | not read | read (both RFC 9110 forms), and it beats our curve |
+  | Wall-clock budget | none | `RETRY_TOTAL_BUDGET = 25.0` on `asyncio.timeout` |
+
+  **`wait_exponential` is a retry storm by construction.** Every client that
+  hits the same outage waits the identical 0.5s / 1s / 2s and comes back in
+  lockstep; the load returns as a wave exactly when the source recovers. The
+  waits now go through `_retry_wait`, a tenacity `wait` callable that jitters,
+  honours `Retry-After` on 429/503, and applies the cap **after** the jitter —
+  the other order caps 4s and then multiplies by up to 1.5, which is 6s.
+
+  **`HTTP_TIMEOUT` was never a budget, and `stop_after_delay` would not be one
+  either.** httpx bounds each *operation* and its read timeout restarts with
+  every chunk, so a slowly trickling response outlives any ceiling without a
+  single read expiring. Tenacity's `stop_after_delay` declines to start a *new*
+  attempt past the delay but cannot cut one already running — and a single slow
+  attempt is exactly this failure. The bound is `asyncio.timeout` around the
+  whole ladder, set below the MCP SDK's 30s default so the server stops working
+  before the caller stops listening. Configurable via
+  `MCP_RETRY_TOTAL_BUDGET`, like the other three retry knobs.
+
+  `_retry_wait` reads the module globals at call time on purpose: three
+  existing tests lower `RETRY_WAIT_INITIAL` with `monkeypatch.setattr`, and a
+  value bound at import would ignore them and put real sleeps back into the
+  suite. A test pins that.
+
+### Added
+
+- **`tests/test_retry_policy.py`** — the retry path had no tests of its own.
+  The properties that were already correct are pinned alongside the new ones,
+  so a later edit cannot lose them quietly. Counter-checks were run against all
+  six properties; see the pull request.
+
 ## [0.7.2] - 2026-08-03
 
 ### Fixed
