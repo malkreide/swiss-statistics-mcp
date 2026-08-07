@@ -1,0 +1,9 @@
+HistoricalCode,BfsCode,ValidFrom,ValidTo,Level,Parent,Name,ShortName,Inscription,Radiation,Rec_Type_fr,Rec_Type_de
+1,1,12.09.1848,,1,,Zürich,ZH,,,,
+10078,106,12.09.1848,,2,1,Bezirk Horgen,Horgen,100,,,
+16080,295,01.01.2018,,3,10078,Horgen,Horgen,3582,,,
+16123,293,01.01.2019,,3,10078,Wädenswil,Wädenswil,3625,,,
+13688,261,01.01.1990,,3,10228,Zürich,Zürich,1498,,,
+23,23,12.09.1848,,1,,Valais / Wallis,VS,,,,
+10013,2308,12.09.1848,,2,23,District de Monthey,Monthey,100,,,
+10078,6158,12.09.1848,,3,10013,Vionnaz,Vionnaz,,,,

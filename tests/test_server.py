@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 import respx
+from fixture_data import fixture_text
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -1002,49 +1004,31 @@ class TestToolLogging:
 
 # Snapshot fixture reproduces the real trap: HistoricalCode 10078 is BOTH
 # ZH's 'Bezirk Horgen' (Level 2) and VS's commune 'Vionnaz' (Level 3).
-_SNAPSHOT_CSV = (
-    "HistoricalCode,BfsCode,ValidFrom,ValidTo,Level,Parent,Name,ShortName,"
-    "Inscription,Radiation,Rec_Type_fr,Rec_Type_de\n"
-    "1,1,12.09.1848,,1,,Zürich,ZH,,,,\n"
-    "10078,201,01.01.1900,,2,1,Bezirk Horgen,Horgen,,,,\n"
-    "16123,293,01.01.2019,,3,10078,Wädenswil,Wädenswil,,,,\n"
-    "13300,295,01.01.2018,,3,10078,Horgen,Horgen,,,,\n"
-    "23,23,12.09.1848,,1,,Valais / Wallis,VS,,,,\n"
-    "10013,2308,01.01.1900,,2,23,District de Monthey,Monthey,,,,\n"
-    "10078,6158,01.01.1900,,3,10013,Vionnaz,Vionnaz,,,,\n"
-)
-
-_CORR_CSV = (
-    "InitialHistoricalCode,InitialCode,InitialName,InitialParentHistoricalCode,"
-    "InitialParentName,InitialStep,TerminalHistoricalCode,TerminalCode,TerminalName,"
-    "TerminalParentHistoricalCode,TerminalParentName,TerminalStep\n"
-    "13300,133,Horgen,10078,Bezirk Horgen,24,16999,295,Horgen,10078,Bezirk Horgen,24\n"
-)
-
-_MUT_CSV = (
-    "MutationNumber,MutationDate,InitialHistoricalCode,InitialCode,InitialName,"
-    "InitialParentHistoricalCode,InitialParentName,InitialStep,TerminalHistoricalCode,"
-    "TerminalCode,TerminalName,TerminalParentHistoricalCode,TerminalParentName,TerminalStep\n"
-    "3582,01.01.2018,13200,132,Hirzel,10078,Bezirk Horgen,26,16999,295,Horgen,10078,Bezirk Horgen,21\n"
-    "3582,01.01.2018,13300,133,Horgen,10078,Bezirk Horgen,26,16999,295,Horgen,10078,Bezirk Horgen,21\n"
-)
-
-_HSSO_CHAPTER_B = (
-    "<html><body>"
-    '<a class="explorer-item" href="/de/2012/b/1a">'
-    '<div class="explorer-item__title">B.1a</div>'
-    '<div class="explorer-item__description">Wohnbevölkerung nach Kantonen</div></a>'
-    '<a class="explorer-item" href="/de/2012/b/11b">'
-    '<div class="explorer-item__title">B.11b</div>'
-    '<div class="explorer-item__description">Erwerbstätige nach Sektoren</div></a>'
-    "</body></html>"
-)
+# Aufgezeichnet statt ausgedacht. Herkunft, Datum und Auswahlregel je Datei in
+# tests/fixtures/PROVENANCE.md; neu aufzeichnen mit
+# `python scripts/record_fixtures.py`.
+#
+# Die erfundenen Vorgaenger trugen teils falsche Codes (Bezirk Horgen als 201
+# statt 106, Horgen als 13300 statt 16080) und kannten den Fall nicht, den die
+# echte Quelle liefert: «Zürich» kommt zweimal vor — als Kanton (Level 1) und
+# als Gemeinde (Level 3).
+_SNAPSHOT_HISTORIC_CSV = fixture_text("agvch_snapshot_historic.csv")
+_SNAPSHOT_CURRENT_CSV = fixture_text("agvch_snapshot_current.csv")
+_CORR_CSV = fixture_text("agvch_correspondances.csv")
+_MUT_CSV = fixture_text("agvch_mutations.csv")
+_HSSO_CHAPTER_B = fixture_text("hsso_chapter_b.html")
 
 
 def _fake_get_text_factory():
     async def fake_get_text(url: str) -> str:
         if "snapshot" in url:
-            return _SNAPSHOT_CSV
+            # Ein Snapshot ist ein Zeitpunkt, und der Server ruft ihn zweimal
+            # ab — zum from_date und zum to_date. Die erfundene Vorgaengerin
+            # gab beide Male dieselbe Datei zurueck und fuehrte darin BFS 133
+            # (vor der Fusion) UND 295 (danach): ein Bestand, den die Quelle
+            # nie liefert. Hier entscheidet das Datum in der URL.
+            year = int(re.search(r"date=\d\d-\d\d-(\d{4})", url).group(1))
+            return _SNAPSHOT_HISTORIC_CSV if year < 2018 else _SNAPSHOT_CURRENT_CSV
         if "correspondances" in url:
             return _CORR_CSV
         if "mutations" in url:
@@ -1078,8 +1062,19 @@ class TestAgvchHelpers:
 
         from swiss_statistics_mcp.server import _climb_to_canton, _index_by_hist
 
-        rows = list(csv.DictReader(io.StringIO(_SNAPSHOT_CSV)))
+        rows = list(csv.DictReader(io.StringIO(_SNAPSHOT_CURRENT_CSV)))
         by_hist = _index_by_hist(rows)
+
+        # Die Kollision ist eine Eigenschaft der QUELLE, nicht der Fixture:
+        # `HistoricalCode` 10078 steht fuer «Bezirk Horgen» (Level 2, ZH) und
+        # «Vionnaz» (Level 3, VS). Gemessen am 2026-08-07 gibt es 11 solcher
+        # Paare. Ohne sie prueft dieser Test nichts — deshalb steht sie hier
+        # als Vorbedingung und nicht bloss im Kommentar.
+        shared = [r for r in rows if r["HistoricalCode"] == "10078"]
+        assert len({r["Level"] for r in shared}) > 1, (
+            "kein geteilter HistoricalCode in der Fixture — der Test bestuende "
+            "leer; neu aufzeichnen mit scripts/record_fixtures.py"
+        )
         waedenswil = next(r for r in rows if r["BfsCode"] == "293")
         vionnaz = next(r for r in rows if r["BfsCode"] == "6158")
 
@@ -1089,10 +1084,18 @@ class TestAgvchHelpers:
     def test_parse_hsso_chapter(self):
         from swiss_statistics_mcp.server import _parse_hsso_chapter
 
+        # Erwartung aus der Fixture abgeleitet: Die aufgezeichnete Seite fuehrt
+        # so viele explorer-item-Anker, wie sie fuehrt. Eine feste Zahl waere
+        # beim naechsten Aufzeichnen falsch, ohne dass sich etwas Geprueftes
+        # geaendert haette.
+        expected_codes = re.findall(r'explorer-item__title">([^<]+)<', _HSSO_CHAPTER_B)
         entries = _parse_hsso_chapter(_HSSO_CHAPTER_B)
-        assert len(entries) == 2
+        assert [e.code for e in entries] == expected_codes
         assert entries[0].code == "B.1a"
-        assert entries[0].title == "Wohnbevölkerung nach Kantonen"
+        # Titel und XLSX-Pfad kommen aus der aufgezeichneten Seite. Der
+        # Vorgaenger schrieb «Wohnbevölkerung nach Kantonen»; die Quelle sagt
+        # «… (absolute Zahlen)» — die erfundene Fixture hatte den Titel gekuerzt.
+        assert entries[0].title.startswith("Wohnbevölkerung nach Kantonen")
         assert entries[0].xlsx_url == "https://hsso.ch/get/B.01a.xlsx"
 
 
@@ -1239,7 +1242,18 @@ class TestSearchHistoricalSeries:
                 SearchHistoricalSeriesInput(topic="Wohnbevölkerung")
             )
         data = result.model_dump(exclude_none=True)
-        assert data["total_matches"] == 1
+        # Aus der Fixture abgeleitet: Die aufgezeichnete Kapitelseite fuehrt
+        # mehrere Reihen zum Thema «Wohnbevölkerung» — die erfundene
+        # Vorgaengerin kannte genau eine.
+        import re as _re
+
+        expected = [
+            d
+            for d in _re.findall(r'explorer-item__description">([^<]*)<', _HSSO_CHAPTER_B)
+            if "Wohnbevölkerung" in d
+        ]
+        assert expected, "Fixture ohne passendes Thema — Auswahlregel pruefen"
+        assert data["total_matches"] == len(expected)
         assert data["series"][0]["xlsx_url"] == "https://hsso.ch/get/B.01a.xlsx"
         # NonCommercial notice must always be present
         assert "NonCommercial" in data["licence_note"]
