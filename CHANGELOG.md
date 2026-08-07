@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Hinzugefuegt — die Fixtures sind aufgezeichnet, nicht mehr ausgedacht
+
+**`scripts/record_fixtures.py`** zeichnet von allen vier Quellen auf — AGVCH,
+CKAN (`opendata.swiss`), HSSO und PXWeb — und schreibt `tests/fixtures/*` samt
+`PROVENANCE.md` mit Quelle, **Aufzeichnungsdatum**, Auswahlregel und SHA-256 je
+Datei. Ohne Datum ist «aufgezeichnet» nach zwei Jahren von «ausgedacht» nicht
+mehr zu unterscheiden.
+
+Das Skript sendet denselben **User-Agent** wie der Server: `opendata.swiss`
+antwortet auf den Default von httpx/curl mit HTTP 403, und ohne ihn zeichnete
+das Skript eine Fehlerseite auf und merkte es nicht.
+
+**Was der Wechsel aufgedeckt hat — drei Befunde an den Fixtures:**
+
+1. **Ein Snapshot ist ein Zeitpunkt, die alte Fixture war zwei.** Sie fuehrte
+   BFS 133 (Horgen, vor der Fusion) **und** 295 (danach) in einer Datei — einen
+   Bestand, den die Quelle nie liefert. Der Server ruft den Snapshot zweimal ab,
+   zum `from_date` und zum `to_date`; jetzt gibt es zwei datierte Dateien, und
+   der Fake im Test entscheidet anhand des Datums in der URL.
+
+2. **Die Korrespondenz-Fixture beantwortete eine Anfrage, die der Server nie
+   stellt.** `resolve_historical_commune` ruft
+   `includeUnmodified=true&includeTerritoryExchange=false` ueber den ganzen
+   Zeitraum ab. Wer mit anderen Parametern aufzeichnet, legt dem Mock eine
+   Antwort in den Mund, die niemand anfordert — und der Test prueft einen Pfad,
+   den es nicht gibt. Aufgezeichnet wird jetzt mit den Parametern des Servers.
+
+3. **Falsche Codes und gekuerzte Titel.** Bezirk Horgen stand als BFS 201 statt
+   106, Horgen als HistoricalCode 13300 statt 16080, und der HSSO-Titel lautete
+   «Wohnbevölkerung nach Kantonen» statt «… (absolute Zahlen)».
+
+**Eine Eigenschaft der Quelle ist jetzt Vorbedingung statt Kommentar.** Der
+Disambiguierungs-Test lebt davon, dass ein `HistoricalCode` auf zwei Ebenen in
+zwei Kantonen vorkommt — `10078` ist «Bezirk Horgen» (Level 2, ZH) **und**
+«Vionnaz» (Level 3, VS). Gemessen am 2026-08-07 gibt es **11** solcher Paare;
+die Kollision ist also echt und kein Fixture-Artefakt. Das Aufzeichnungsskript
+bricht ab, wenn die Auswahl kein solches Paar mehr enthaelt, und der Test
+assertiert es als Vorbedingung — sonst bestuende er leer.
+
+Erwartungen werden durchgehend **aus der Fixture abgeleitet** statt
+hingeschrieben.
+
+**Kein Befund am Produktivcode.** Anders als in `zh-education-mcp`,
+`bag-health-mcp` und `register-mcp` hat das Aufzeichnen hier nichts Kaputtes
+freigelegt — die Fehlschlaege lagen samt und sonders an meiner Auswahlregel,
+nicht am Server. Das gehoert genauso berichtet wie ein Fund.
+
+**Am Rande, nicht behoben:** `TestLiveAPI::test_live_population_zurich` ist in
+einem von drei Laeufen gefallen und in den anderen beiden durchgelaufen — ein
+fluechtiger Fehlschlag gegen die echte API, kein reihenfolgeabhaengiger. Er ist
+nicht Gegenstand dieses PRs und steht hier, damit er nicht als neu gilt.
+
+Der Rahmen dazu steht im Skill [`mcp-data-fidelity`](https://github.com/malkreide/mcp-data-fidelity-skill)
+unter Regel 5 und im Katalog-Check `OPS-009`.
+
+
 ### Changed
 
 - **Retry policy against the upstream: spread, obedient and time-bounded

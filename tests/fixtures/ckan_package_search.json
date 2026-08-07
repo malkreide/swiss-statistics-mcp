@@ -1,0 +1,705 @@
+{
+  "help": "https://ckan.opendata.swiss/api/3/action/help_show?name=package_search",
+  "success": true,
+  "result": {
+    "count": 2837,
+    "facets": {},
+    "results": [
+      {
+        "accrual_periodicity": "http://publications.europa.eu/resource/authority/frequency/IRREG",
+        "author": null,
+        "author_email": null,
+        "conforms_to": [],
+        "contact_points": [
+          {
+            "email": "wahlen-abstimmungen@bl.ch",
+            "name": "Basel-Landschaft"
+          }
+        ],
+        "creator_user_id": "af084126-f711-4016-a585-70354e997796",
+        "description": {
+          "rm": "Resultats finals da la votaziun chantunala \"Formulierte Gesetzesinitiative «Energiepolitik nur mit der Bevölkerung» vom 7. November 2024\", 14 da zercladur 2026, Kanton Basel-Landschaft, ordinà tenor vischnancas.",
+          "it": "Risultati finali della votazione cantonale \"Formulierte Gesetzesinitiative «Energiepolitik nur mit der Bevölkerung» vom 7. November 2024\", 14 giugno 2026, Kanton Basel-Landschaft, suddivisi per municipalit.",
+          "fr": "Résultats finaux du vote cantonal \"Formulierte Gesetzesinitiative «Energiepolitik nur mit der Bevölkerung» vom 7. November 2024\", 14 juin 2026, Kanton Basel-Landschaft, répartis par municipalités.",
+          "de": "Schlussresultate der kantonalen Abstimmung \"Formulierte Gesetzesinitiative «Energiepolitik nur mit der Bevölkerung» vom 7. November 2024\", 14. Juni 2026, Kanton Basel-Landschaft, aufgeschlüsselt nach Gemeinden.",
+          "en": ""
+        },
+        "display_name": {
+          "rm": "Formulierte Gesetzesinitiative «Energiepolitik nur mit der Bevölkerung» vom 7. November 2024",
+          "it": "Formulierte Gesetzesinitiative «Energiepolitik nur mit der Bevölkerung» vom 7. November 2024",
+          "fr": "Formulierte Gesetzesinitiative «Energiepolitik nur mit der Bevölkerung» vom 7. November 2024",
+          "de": "Formulierte Gesetzesinitiative «Energiepolitik nur mit der Bevölkerung» vom 7. November 2024",
+          "en": ""
+        },
+        "documentation": [],
+        "id": "0f2a6c5c-25a9-4850-bfc8-b43b0dc37477",
+        "identifier": "vote-ct-13-200@kanton-basel-landschaft",
+        "isopen": false,
+        "issued": "2026-06-14T00:00:00",
+        "keywords": {
+          "en": [],
+          "de": [
+            "abstimmung",
+            "kantonal"
+          ],
+          "fr": [
+            "votation",
+            "cantonal"
+          ],
+          "it": [
+            "votazione",
+            "cantonale"
+          ]
+        },
+        "language": [],
+        "license_id": null,
+        "license_title": null,
+        "maintainer": null,
+        "maintainer_email": null,
+        "metadata_created": "2026-06-15T03:19:33.583453",
+        "metadata_modified": "2026-08-05T04:22:25.254475",
+        "modified": "2026-06-14T13:26:00+00:00",
+        "name": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevolkerung-vom-7-november-2024",
+        "num_resources": 2,
+        "num_tags": 8,
+        "organization": {
+          "approval_status": "approved",
+          "created": "2022-12-13T14:49:27.397934",
+          "description": {
+            "fr": "",
+            "en": "The Canton of Basel-Country publishes open datasets of cantonal offices and agencies.\r\nFurther information at https://ogd.bl.ch/",
+            "de": "Der Kanton Basel-Landschaft veröffentlicht nach und nach Open Government Datensätze von kantonalen Ämtern und Dienststellen. \r\nWeitere Informationen unter https://ogd.bl.ch/",
+            "it": ""
+          },
+          "display_name": {
+            "de": "Kanton Basel-Landschaft",
+            "en": "Canton of Basel-Country",
+            "fr": "Canton de Bâle-Campagne",
+            "it": "Cantone di Basilea-Campagna"
+          },
+          "id": "8bedecea-4a19-4807-8d58-59b83b4a6f92",
+          "image_display_url": "https://ckan.ogdch-abnahme.clients.liip.ch/uploads/group/2021-04-23-131437.419029baselland.jpg",
+          "image_url": "https://ckan.ogdch-abnahme.clients.liip.ch/uploads/group/2021-04-23-131437.419029baselland.jpg",
+          "is_organization": true,
+          "name": "kanton-basel-landschaft",
+          "num_followers": 0,
+          "package_count": 599,
+          "political_level": "canton",
+          "state": "active",
+          "title": {
+            "de": "Kanton Basel-Landschaft",
+            "en": "Canton of Basel-Country",
+            "fr": "Canton de Bâle-Campagne",
+            "it": "Cantone di Basilea-Campagna"
+          },
+          "type": "organization",
+          "url": "https://www.baselland.ch",
+          "tags": [],
+          "groups": []
+        },
+        "owner_org": "8bedecea-4a19-4807-8d58-59b83b4a6f92",
+        "private": false,
+        "publisher": {
+          "url": "https://www.baselland.ch/politik-und-behorden/besondere-behoerden/landeskanzlei",
+          "name": "Basel-Landschaft"
+        },
+        "qualified_relations": [],
+        "relations": [
+          {
+            "label": {
+              "de": "Descripziun dal format",
+              "en": "Descripziun dal format",
+              "fr": "Descripziun dal format",
+              "it": "Descripziun dal format"
+            },
+            "url": "https://github.com/OneGov/onegov-cloud/blob/master/src/onegov/election_day/static/docs/api/open_data_rm.md"
+          },
+          {
+            "label": {
+              "de": "Descrizione del formato",
+              "en": "Descrizione del formato",
+              "fr": "Descrizione del formato",
+              "it": "Descrizione del formato"
+            },
+            "url": "https://github.com/OneGov/onegov-cloud/blob/master/src/onegov/election_day/static/docs/api/open_data_it.md"
+          },
+          {
+            "label": {
+              "de": "Description du format",
+              "en": "Description du format",
+              "fr": "Description du format",
+              "it": "Description du format"
+            },
+            "url": "https://github.com/OneGov/onegov-cloud/blob/master/src/onegov/election_day/static/docs/api/open_data_fr.md"
+          },
+          {
+            "label": {
+              "de": "Formatbeschreibung",
+              "en": "Formatbeschreibung",
+              "fr": "Formatbeschreibung",
+              "it": "Formatbeschreibung"
+            },
+            "url": "https://github.com/OneGov/onegov-cloud/blob/master/src/onegov/election_day/static/docs/api/open_data_de.md"
+          }
+        ],
+        "see_alsos": [],
+        "spatial": "",
+        "state": "active",
+        "temporals": [
+          {
+            "end_date": "2026-06-14T23:59:59.999999",
+            "start_date": "2026-06-14T00:00:00"
+          }
+        ],
+        "title": {
+          "rm": "Formulierte Gesetzesinitiative «Energiepolitik nur mit der Bevölkerung» vom 7. November 2024",
+          "it": "Formulierte Gesetzesinitiative «Energiepolitik nur mit der Bevölkerung» vom 7. November 2024",
+          "fr": "Formulierte Gesetzesinitiative «Energiepolitik nur mit der Bevölkerung» vom 7. November 2024",
+          "de": "Formulierte Gesetzesinitiative «Energiepolitik nur mit der Bevölkerung» vom 7. November 2024",
+          "en": ""
+        },
+        "title_for_slug": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevolkerung-vom-7-november-2024",
+        "type": "dataset",
+        "url": "https://abstimmungen.bl.ch/vote/ct-13-200/data",
+        "version": null,
+        "extras": [
+          {
+            "key": "guid",
+            "value": "vote-ct-13-200@kanton-basel-landschaft"
+          },
+          {
+            "key": "uri",
+            "value": "http://kanton-basel-landschaft/vote-ct-13-200"
+          },
+          {
+            "key": "harvest_object_id",
+            "value": "6a9384fd-4616-4761-a7d7-178707ef23d1"
+          },
+          {
+            "key": "harvest_source_id",
+            "value": "cadaf0fe-9f1d-4bd4-a7ad-b769b0cdcca9"
+          },
+          {
+            "key": "harvest_source_title",
+            "value": "BL - Abstimmungen"
+          }
+        ],
+        "groups": [
+          {
+            "description": {
+              "fr": "",
+              "de": "",
+              "en": "",
+              "it": ""
+            },
+            "display_name": {
+              "de": "Regierung und öffentlicher Sektor",
+              "en": "Government and public sector",
+              "fr": "Gouvernement et secteur public",
+              "it": "Governo e settore pubblico"
+            },
+            "id": "e63f4b4e-5e3e-4c7f-9d4a-4babf164878f",
+            "image_display_url": "",
+            "name": "gove",
+            "title": "{\"de\": \"Regierung und öffentlicher Sektor\", \"en\": \"Government and public sector\", \"fr\": \"Gouvernement et secteur public\", \"it\": \"Governo e settore pubblico\"}"
+          }
+        ],
+        "resources": [
+          {
+            "access_services": [],
+            "byte_size": 0,
+            "cache_last_updated": null,
+            "cache_url": null,
+            "created": "2026-06-15T03:19:33.588565",
+            "datastore_active": false,
+            "datastore_contains_all_records_of_source_file": false,
+            "description": {
+              "en": "",
+              "de": "",
+              "fr": "",
+              "it": ""
+            },
+            "display_name": {
+              "rm": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.csv",
+              "it": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.csv",
+              "fr": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.csv",
+              "de": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.csv",
+              "en": ""
+            },
+            "documentation": [],
+            "download_url": "https://abstimmungen.bl.ch/vote/ct-13-200/data-csv",
+            "format": "CSV",
+            "hash": "4a707b16954c594955e0aad6412cc633",
+            "id": "0a15ce49-6436-4e1e-9d3c-8d0cd5d80957",
+            "identifier": "csv",
+            "issued": "2026-03-18T16:42:21+00:00",
+            "language": [],
+            "last_modified": null,
+            "license": "https://opendata.swiss/terms-of-use#terms_by",
+            "media_type": "text/csv",
+            "metadata_modified": "2026-08-05T04:22:25.292651",
+            "mimetype": null,
+            "mimetype_inner": null,
+            "modified": "2026-06-14T13:26:00+00:00",
+            "name": {
+              "rm": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.csv",
+              "it": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.csv",
+              "fr": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.csv",
+              "de": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.csv",
+              "en": ""
+            },
+            "package_id": "0f2a6c5c-25a9-4850-bfc8-b43b0dc37477",
+            "position": 0,
+            "resource_type": null,
+            "rights": "https://opendata.swiss/terms-of-use#terms_by",
+            "size": null,
+            "state": "active",
+            "temporal_resolution": "",
+            "title": {
+              "rm": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.csv",
+              "it": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.csv",
+              "fr": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.csv",
+              "de": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.csv",
+              "en": ""
+            },
+            "uri": "http://kanton-basel-landschaft/vote-ct-13-200/csv",
+            "url": "https://abstimmungen.bl.ch/vote/ct-13-200/data-csv",
+            "url_type": null
+          },
+          {
+            "access_services": [],
+            "byte_size": 0,
+            "cache_last_updated": null,
+            "cache_url": null,
+            "created": "2026-06-15T03:19:33.588569",
+            "datastore_active": false,
+            "datastore_contains_all_records_of_source_file": false,
+            "description": {
+              "en": "",
+              "de": "",
+              "fr": "",
+              "it": ""
+            },
+            "display_name": {
+              "rm": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.json",
+              "it": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.json",
+              "fr": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.json",
+              "de": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.json",
+              "en": ""
+            },
+            "documentation": [],
+            "download_url": "https://abstimmungen.bl.ch/vote/ct-13-200/data-json",
+            "format": "JSON",
+            "hash": "",
+            "id": "2067e56e-9cdb-4f01-bd5a-06e4786ddb15",
+            "identifier": "json",
+            "issued": "2026-03-18T16:42:21+00:00",
+            "language": [],
+            "last_modified": null,
+            "license": "https://opendata.swiss/terms-of-use#terms_by",
+            "media_type": "application/json",
+            "metadata_modified": "2026-08-05T04:22:25.292790",
+            "mimetype": null,
+            "mimetype_inner": null,
+            "modified": "2026-06-14T13:26:00+00:00",
+            "name": {
+              "rm": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.json",
+              "it": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.json",
+              "fr": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.json",
+              "de": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.json",
+              "en": ""
+            },
+            "package_id": "0f2a6c5c-25a9-4850-bfc8-b43b0dc37477",
+            "position": 1,
+            "resource_type": null,
+            "rights": "https://opendata.swiss/terms-of-use#terms_by",
+            "size": null,
+            "state": "active",
+            "temporal_resolution": "",
+            "title": {
+              "rm": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.json",
+              "it": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.json",
+              "fr": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.json",
+              "de": "formulierte-gesetzesinitiative-energiepolitik-nur-mit-der-bevoelkerung-vom-7-november-2024.json",
+              "en": ""
+            },
+            "uri": "http://kanton-basel-landschaft/vote-ct-13-200/json",
+            "url": "https://abstimmungen.bl.ch/vote/ct-13-200/data-json",
+            "url_type": null
+          }
+        ],
+        "tags": [
+          {
+            "display_name": "abstimmung",
+            "id": "b23c35b9-e3c8-41ab-8a3f-2b33a98c7a97",
+            "name": "abstimmung",
+            "state": "active",
+            "vocabulary_id": null
+          },
+          {
+            "display_name": "cantonal",
+            "id": "c9bda5da-f4a1-4985-a77f-c4f34a2d7d3d",
+            "name": "cantonal",
+            "state": "active",
+            "vocabulary_id": null
+          },
+          {
+            "display_name": "cantonale",
+            "id": "41057c64-0be9-41d0-8366-1cf5de6336ba",
+            "name": "cantonale",
+            "state": "active",
+            "vocabulary_id": null
+          },
+          {
+            "display_name": "kantonal",
+            "id": "fef72acc-8f8c-4467-96e6-7f7be289508c",
+            "name": "kantonal",
+            "state": "active",
+            "vocabulary_id": null
+          },
+          {
+            "display_name": "plaun-chantunal",
+            "id": "f88b7784-fb19-4142-9c49-b274c41d846f",
+            "name": "plaun-chantunal",
+            "state": "active",
+            "vocabulary_id": null
+          },
+          {
+            "display_name": "votation",
+            "id": "cc2ce8c9-0497-422f-859a-b0f0e52b3e7f",
+            "name": "votation",
+            "state": "active",
+            "vocabulary_id": null
+          },
+          {
+            "display_name": "votazione",
+            "id": "e156fa4f-b674-4bc8-b3ee-133cada8f463",
+            "name": "votazione",
+            "state": "active",
+            "vocabulary_id": null
+          },
+          {
+            "display_name": "votaziun",
+            "id": "39a4b4ff-9d47-466c-805e-96b71eb53c36",
+            "name": "votaziun",
+            "state": "active",
+            "vocabulary_id": null
+          }
+        ],
+        "relationships_as_subject": [],
+        "relationships_as_object": []
+      },
+      {
+        "accrual_periodicity": "",
+        "author": null,
+        "author_email": null,
+        "conforms_to": [],
+        "contact_points": [
+          {
+            "email": "datashop@statistik.zh.ch",
+            "name": "Amt für Statistik und Daten, Data Shop"
+          }
+        ],
+        "creator_user_id": "af084126-f711-4016-a585-70354e997796",
+        "description": {
+          "de": "Einwohnerbestand Ende Jahr nach zivilrechtlichem Wohnsitz (ab 2010 inkl. vorläufig Aufgenommene, die seit mehr als einem Jahr in der Gemeinde leben, aber ohne Wochenaufenthalter und Asylbewerber).",
+          "en": "",
+          "fr": "",
+          "it": ""
+        },
+        "display_name": {
+          "de": "Bevölkerung [Pers.]",
+          "en": "",
+          "fr": "",
+          "it": ""
+        },
+        "documentation": [],
+        "id": "67744344-9598-468c-b210-e680c62402a8",
+        "identifier": "204@statistisches-amt-kanton-zuerich",
+        "isopen": false,
+        "issued": "2016-01-20T00:00:00+01:00",
+        "keywords": {
+          "en": [],
+          "de": [
+            "nichtweitergefuehrt",
+            "kantonzuerich",
+            "bevoelkerung",
+            "bezirke",
+            "gemeinden"
+          ],
+          "fr": [],
+          "it": []
+        },
+        "language": [
+          "de"
+        ],
+        "license_id": null,
+        "license_title": null,
+        "maintainer": null,
+        "maintainer_email": null,
+        "metadata_created": "2021-01-14T17:58:54.737519",
+        "metadata_modified": "2026-07-29T11:11:06.974177",
+        "modified": "2026-03-27T13:54:55.513669+01:00",
+        "name": "bevolkerung-pers",
+        "num_resources": 1,
+        "num_tags": 5,
+        "organization": {
+          "approval_status": "approved",
+          "created": "2015-12-04T12:41:05.028083",
+          "description": {
+            "de": "Das Amt für Statistik und Daten umfasst das Kompetenzzentrum Daten des Kantons Zürich, organisiert, koordiniert und steuert die politische Teilhabe inkl. der Wahlen und Abstimmungen im Kanton und beobachtet die Entwicklung des Kantons mit statistischen Methoden. Wir versorgen Bevölkerung, Verwaltung, Politik, Gemeinden, Medien, Firmen und sonstige Organisationen mit qualitativ hochstehenden Daten, Information und Fakten zum Kanton Zürich. Inhaltlich arbeiten wir unabhängig und objektiv.",
+            "en": "",
+            "fr": "",
+            "it": ""
+          },
+          "display_name": {
+            "en": "",
+            "de": "Amt für Statistik und Daten Kanton Zürich",
+            "fr": "",
+            "it": ""
+          },
+          "id": "e7da7270-663b-4f96-910c-e4bffbf836f0",
+          "image_display_url": "http://liip-prod-ckan-svc:80/uploads/group/2026-07-08-112416.614346StempelAmt2zeilig.png",
+          "image_url": "2026-07-08-112416.614346StempelAmt2zeilig.png",
+          "is_organization": true,
+          "name": "statistisches-amt-kanton-zuerich",
+          "num_followers": 0,
+          "package_count": 256,
+          "political_level": "canton",
+          "state": "active",
+          "title": {
+            "en": "",
+            "de": "Amt für Statistik und Daten Kanton Zürich",
+            "fr": "",
+            "it": ""
+          },
+          "type": "organization",
+          "url": "https://www.zh.ch/amt-fuer-statistik-und-daten",
+          "groups": [
+            {
+              "capacity": "public",
+              "name": "kanton-zuerich"
+            }
+          ],
+          "tags": []
+        },
+        "owner_org": "e7da7270-663b-4f96-910c-e4bffbf836f0",
+        "private": false,
+        "publisher": {
+          "url": "https://opendata.swiss/organization/statistisches-amt-kanton-zuerich",
+          "name": "Amt für Statistik und Daten"
+        },
+        "qualified_relations": [],
+        "relations": [
+          {
+            "label": {
+              "de": "legal_basis",
+              "en": "legal_basis",
+              "fr": "legal_basis",
+              "it": "legal_basis"
+            },
+            "url": "https://www.zh.ch/de/politik-staat/gesetze-beschluesse/gesetzessammlung/zhlex-os/erlass-431_1-70-359.html"
+          },
+          {
+            "label": {
+              "de": "Vorbereiteter Code in R oder Python für jedes Dataset mit csv-Datei(en)",
+              "en": "Vorbereiteter Code in R oder Python für jedes Dataset mit csv-Datei(en)",
+              "fr": "Vorbereiteter Code in R oder Python für jedes Dataset mit csv-Datei(en)",
+              "it": "Vorbereiteter Code in R oder Python für jedes Dataset mit csv-Datei(en)"
+            },
+            "url": "https://openzh.github.io/starter-code-openZH/"
+          }
+        ],
+        "see_alsos": [
+          {
+            "dataset_identifier": "61@statistisches-amt-kanton-zuerich"
+          },
+          {
+            "dataset_identifier": "68@statistisches-amt-kanton-zuerich"
+          },
+          {
+            "dataset_identifier": "87@statistisches-amt-kanton-zuerich"
+          },
+          {
+            "dataset_identifier": "280@statistisches-amt-kanton-zuerich"
+          },
+          {
+            "dataset_identifier": "283@statistisches-amt-kanton-zuerich"
+          },
+          {
+            "dataset_identifier": "284@statistisches-amt-kanton-zuerich"
+          },
+          {
+            "dataset_identifier": "285@statistisches-amt-kanton-zuerich"
+          },
+          {
+            "dataset_identifier": "298@statistisches-amt-kanton-zuerich"
+          },
+          {
+            "dataset_identifier": "254@statistisches-amt-kanton-zuerich"
+          },
+          {
+            "dataset_identifier": "2622@are-kanton-zuerich"
+          }
+        ],
+        "spatial": "",
+        "state": "active",
+        "temporals": [],
+        "title": {
+          "de": "Bevölkerung [Pers.]",
+          "en": "",
+          "fr": "",
+          "it": ""
+        },
+        "title_for_slug": "bevolkerung-pers",
+        "type": "dataset",
+        "url": "https://www.zh.ch/de/politik-staat/gemeinden/gemeindeportraet.html",
+        "version": null,
+        "extras": [
+          {
+            "key": "guid",
+            "value": "204@statistisches-amt-kanton-zuerich"
+          },
+          {
+            "key": "uri",
+            "value": "http://liip-prod-ckan-svc:80/perma/204@statistisches-amt-kanton-zuerich"
+          },
+          {
+            "key": "harvest_object_id",
+            "value": "f392cefe-9816-4545-abdb-b47b6a102a37"
+          },
+          {
+            "key": "harvest_source_id",
+            "value": "609b5092-6a21-49c2-a12b-db3d44e0e562"
+          },
+          {
+            "key": "harvest_source_title",
+            "value": "ZH-Kt Statistisches Amt - DCAT Harvester"
+          }
+        ],
+        "groups": [
+          {
+            "description": {
+              "fr": "",
+              "de": "",
+              "en": "",
+              "it": ""
+            },
+            "display_name": {
+              "de": "Bevölkerung und Gesellschaft",
+              "en": "Population and society",
+              "fr": "Population et société",
+              "it": "Popolazione e società"
+            },
+            "id": "d569c3de-4b8d-4de0-8f0e-9ac4c17f9003",
+            "image_display_url": "",
+            "name": "soci",
+            "title": "{\"de\": \"Bevölkerung und Gesellschaft\", \"en\": \"Population and society\", \"fr\": \"Population et société\", \"it\": \"Popolazione e società\"}"
+          }
+        ],
+        "resources": [
+          {
+            "access_services": [],
+            "byte_size": 1572974,
+            "cache_last_updated": null,
+            "cache_url": null,
+            "created": "2022-12-12T03:07:15.420442",
+            "datastore_active": false,
+            "datastore_contains_all_records_of_source_file": false,
+            "description": {
+              "de": "",
+              "en": "",
+              "fr": "",
+              "it": ""
+            },
+            "display_name": {
+              "de": "Bevölkerung [Pers.]",
+              "en": "",
+              "fr": "",
+              "it": ""
+            },
+            "documentation": [],
+            "download_url": "https://www.web.statistik.zh.ch/ogd/data/KANTON_ZUERICH_133.csv",
+            "format": "CSV",
+            "hash": "",
+            "id": "132b6fed-d7ea-48e3-b5dc-9e63ac16b21e",
+            "issued": "2016-01-21T00:00:00+01:00",
+            "language": [
+              "de"
+            ],
+            "last_modified": null,
+            "license": "https://opendata.swiss/terms-of-use#terms_by",
+            "media_type": "text/csv",
+            "metadata_modified": "2026-07-29T11:11:06.982503",
+            "mimetype": null,
+            "mimetype_inner": null,
+            "modified": "2025-02-24T00:00:00+01:00",
+            "name": {
+              "de": "Bevölkerung [Pers.]",
+              "en": "",
+              "fr": "",
+              "it": ""
+            },
+            "package_id": "67744344-9598-468c-b210-e680c62402a8",
+            "position": 0,
+            "resource_type": null,
+            "rights": "https://opendata.swiss/terms-of-use#terms_by",
+            "size": null,
+            "state": "active",
+            "temporal_resolution": "",
+            "title": {
+              "de": "Bevölkerung [Pers.]",
+              "en": "",
+              "fr": "",
+              "it": ""
+            },
+            "uri": "",
+            "url": "https://www.web.statistik.zh.ch/ogd/data/KANTON_ZUERICH_133.csv",
+            "url_type": null
+          }
+        ],
+        "tags": [
+          {
+            "display_name": "bevoelkerung",
+            "id": "02ee2964-66bd-4173-9058-f9e354696b86",
+            "name": "bevoelkerung",
+            "state": "active",
+            "vocabulary_id": null
+          },
+          {
+            "display_name": "bezirke",
+            "id": "1545b490-60bb-4ea8-bbf7-ae3169ab0d5e",
+            "name": "bezirke",
+            "state": "active",
+            "vocabulary_id": null
+          },
+          {
+            "display_name": "gemeinden",
+            "id": "bd203e69-5ef0-453a-ac6e-86790de68cdf",
+            "name": "gemeinden",
+            "state": "active",
+            "vocabulary_id": null
+          },
+          {
+            "display_name": "kantonzuerich",
+            "id": "52fecd10-5cac-4fbc-a6ac-71869630c5e1",
+            "name": "kantonzuerich",
+            "state": "active",
+            "vocabulary_id": null
+          },
+          {
+            "display_name": "nichtweitergefuehrt",
+            "id": "42d5d695-37f2-48c3-9802-bfa9c631fa6a",
+            "name": "nichtweitergefuehrt",
+            "state": "active",
+            "vocabulary_id": null
+          }
+        ],
+        "relationships_as_subject": [],
+        "relationships_as_object": []
+      }
+    ],
+    "sort": "score desc, metadata_modified desc",
+    "search_facets": {}
+  }
+}

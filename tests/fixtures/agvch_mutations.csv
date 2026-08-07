@@ -1,0 +1,61 @@
+MutationNumber,MutationDate,InitialHistoricalCode,InitialCode,InitialName,InitialParentHistoricalCode,InitialParentName,InitialStep,TerminalHistoricalCode,TerminalCode,TerminalName,TerminalParentHistoricalCode,TerminalParentName,TerminalStep
+3582,01.01.2018,12160,132,Hirzel,10078,Bezirk Horgen,29,16080,295,Horgen,10078,Bezirk Horgen,21
+3582,01.01.2018,12203,133,Horgen,10078,Bezirk Horgen,29,16080,295,Horgen,10078,Bezirk Horgen,21
+3583,01.01.2018,12148,217,Elgg,10074,Bezirk Winterthur,29,16081,294,Elgg,10074,Bezirk Winterthur,21
+3583,01.01.2018,14364,222,Hofstetten (ZH),10074,Bezirk Winterthur,29,16081,294,Elgg,10074,Bezirk Winterthur,21
+3584,01.01.2018,15173,608,Grosshöchstetten,10288,Verwaltungskreis Bern-Mittelland,26,16082,608,Grosshöchstetten,10288,Verwaltungskreis Bern-Mittelland,26
+3584,01.01.2018,15186,624,Schlosswil,10288,Verwaltungskreis Bern-Mittelland,29,16082,608,Grosshöchstetten,10288,Verwaltungskreis Bern-Mittelland,26
+3585,01.01.2018,15289,865,Gelterfingen,10288,Verwaltungskreis Bern-Mittelland,29,16083,872,Kirchdorf (BE),10288,Verwaltungskreis Bern-Mittelland,26
+3585,01.01.2018,15296,872,Kirchdorf (BE),10288,Verwaltungskreis Bern-Mittelland,26,16083,872,Kirchdorf (BE),10288,Verwaltungskreis Bern-Mittelland,26
+3585,01.01.2018,15299,875,Mühledorf (BE),10288,Verwaltungskreis Bern-Mittelland,29,16083,872,Kirchdorf (BE),10288,Verwaltungskreis Bern-Mittelland,26
+3585,01.01.2018,15302,878,Noflen,10288,Verwaltungskreis Bern-Mittelland,29,16083,872,Kirchdorf (BE),10288,Verwaltungskreis Bern-Mittelland,26
+3586,01.01.2018,15961,3503,Mutten,10317,Region Viamala,29,16084,3668,Thusis,10317,Region Viamala,26
+3586,01.01.2018,15981,3668,Thusis,10317,Region Viamala,26,16084,3668,Thusis,10317,Region Viamala,26
+3587,01.01.2018,15965,3521,Bergün/Bravuogn,10307,Region Albula,29,16085,3544,Bergün Filisur,10307,Region Albula,21
+3587,01.01.2018,15966,3522,Filisur,10307,Region Albula,29,16085,3544,Bergün Filisur,10307,Region Albula,21
+3588,01.01.2018,15973,3611,Andiast,10316,Region Surselva,29,16086,3981,Breil/Brigels,10316,Region Surselva,26
+3588,01.01.2018,15974,3616,Waltensburg/Vuorz,10316,Region Surselva,29,16086,3981,Breil/Brigels,10316,Region Surselva,26
+3588,01.01.2018,16038,3981,Breil/Brigels,10316,Region Surselva,26,16086,3981,Breil/Brigels,10316,Region Surselva,26
+3589,01.01.2018,12727,4104,Lupfig,10023,Bezirk Brugg,26,16087,4104,Lupfig,10023,Bezirk Brugg,26
+3589,01.01.2018,13052,4113,Scherz,10023,Bezirk Brugg,29,16087,4104,Lupfig,10023,Bezirk Brugg,26
+3590,01.01.2018,11920,6402,Bevaix,10181,District de Boudry,29,16088,6417,La Grande-Béroche,10320,Canton de Neuchâtel,21
+3590,01.01.2018,11955,6409,Fresens,10181,District de Boudry,29,16088,6417,La Grande-Béroche,10320,Canton de Neuchâtel,21
+3590,01.01.2018,12067,6410,Gorgier,10181,District de Boudry,29,16088,6417,La Grande-Béroche,10320,Canton de Neuchâtel,21
+3590,01.01.2018,12349,6411,Montalchez,10181,District de Boudry,29,16088,6417,La Grande-Béroche,10320,Canton de Neuchâtel,21
+3590,01.01.2018,12869,6414,Saint-Aubin-Sauges,10181,District de Boudry,29,16088,6417,La Grande-Béroche,10320,Canton de Neuchâtel,21
+3590,01.01.2018,13203,6415,Vaumarcus,10181,District de Boudry,29,16088,6417,La Grande-Béroche,10320,Canton de Neuchâtel,21
+3591,01.01.2018,11842,6404,Boudry,10181,District de Boudry,24,16089,6404,Boudry,10320,Canton de Neuchâtel,24
+3592,01.01.2018,11649,6407,Corcelles-Cormondrèche,10181,District de Boudry,24,16090,6407,Corcelles-Cormondrèche,10320,Canton de Neuchâtel,24
+3593,01.01.2018,11591,6408,Cortaillod,10181,District de Boudry,24,16091,6408,Cortaillod,10320,Canton de Neuchâtel,24
+3594,01.01.2018,13151,6412,Peseux,10181,District de Boudry,24,16092,6412,Peseux,10320,Canton de Neuchâtel,24
+3595,01.01.2018,15684,6413,Rochefort,10181,District de Boudry,24,16093,6413,Rochefort,10320,Canton de Neuchâtel,24
+3596,01.01.2018,15622,6416,Milvignes,10181,District de Boudry,24,16094,6416,Milvignes,10320,Canton de Neuchâtel,24
+3597,01.01.2018,12603,6421,La Chaux-de-Fonds,10191,District de la Chaux-de-Fonds,24,16095,6421,La Chaux-de-Fonds,10320,Canton de Neuchâtel,24
+3598,01.01.2018,12768,6422,Les Planchettes,10191,District de la Chaux-de-Fonds,24,16096,6422,Les Planchettes,10320,Canton de Neuchâtel,24
+3599,01.01.2018,12584,6423,La Sagne,10191,District de la Chaux-de-Fonds,24,16097,6423,La Sagne,10320,Canton de Neuchâtel,24
+3600,01.01.2018,12793,6431,Les Brenets,10183,District du Locle,24,16098,6431,Les Brenets,10320,Canton de Neuchâtel,24
+3601,01.01.2018,12601,6432,La Brévine,10183,District du Locle,24,16099,6432,La Brévine,10320,Canton de Neuchâtel,24
+3602,01.01.2018,11470,6433,Brot-Plamboz,10183,District du Locle,24,16100,6433,Brot-Plamboz,10320,Canton de Neuchâtel,24
+3603,01.01.2018,12610,6434,Le Cerneux-Péquignot,10183,District du Locle,24,16101,6434,Le Cerneux-Péquignot,10320,Canton de Neuchâtel,24
+3604,01.01.2018,12604,6435,La Chaux-du-Milieu,10183,District du Locle,24,16102,6435,La Chaux-du-Milieu,10320,Canton de Neuchâtel,24
+3605,01.01.2018,12616,6436,Le Locle,10183,District du Locle,24,16103,6436,Le Locle,10320,Canton de Neuchâtel,24
+3606,01.01.2018,12769,6437,Les Ponts-de-Martel,10183,District du Locle,24,16104,6437,Les Ponts-de-Martel,10320,Canton de Neuchâtel,24
+3607,01.01.2018,11628,6451,Cornaux,10176,District de Neuchâtel,24,16105,6451,Cornaux,10320,Canton de Neuchâtel,24
+3608,01.01.2018,11523,6452,Cressier (NE),10176,District de Neuchâtel,24,16106,6452,Cressier (NE),10320,Canton de Neuchâtel,24
+3609,01.01.2018,12286,6453,Enges,10176,District de Neuchâtel,24,16107,6453,Enges,10320,Canton de Neuchâtel,24
+3610,01.01.2018,14142,6454,Hauterive (NE),10176,District de Neuchâtel,24,16108,6454,Hauterive (NE),10320,Canton de Neuchâtel,24
+3611,01.01.2018,13204,6455,Le Landeron,10176,District de Neuchâtel,24,16109,6455,Le Landeron,10320,Canton de Neuchâtel,24
+3612,01.01.2018,12819,6456,Lignières,10176,District de Neuchâtel,24,16110,6456,Lignières,10320,Canton de Neuchâtel,24
+3613,01.01.2018,12512,6458,Neuchâtel,10176,District de Neuchâtel,24,16111,6458,Neuchâtel,10320,Canton de Neuchâtel,24
+3614,01.01.2018,12867,6459,Saint-Blaise,10176,District de Neuchâtel,24,16112,6459,Saint-Blaise,10320,Canton de Neuchâtel,24
+3615,01.01.2018,14963,6461,La Tène,10176,District de Neuchâtel,24,16113,6461,La Tène,10320,Canton de Neuchâtel,24
+3616,01.01.2018,10934,6485,Valangin,10185,District du Val-de-Ruz,24,16114,6485,Valangin,10320,Canton de Neuchâtel,24
+3617,01.01.2018,15623,6487,Val-de-Ruz,10185,District du Val-de-Ruz,24,16115,6487,Val-de-Ruz,10320,Canton de Neuchâtel,24
+3618,01.01.2018,12580,6504,La Côte-aux-Fées,10186,District du Val-de-Travers,24,16116,6504,La Côte-aux-Fées,10320,Canton de Neuchâtel,24
+3619,01.01.2018,12781,6511,Les Verrières,10186,District du Val-de-Travers,24,16117,6511,Les Verrières,10320,Canton de Neuchâtel,24
+3620,01.01.2018,14964,6512,Val-de-Travers,10186,District du Val-de-Travers,24,16118,6512,Val-de-Travers,10320,Canton de Neuchâtel,24
+3621,01.01.2018,13276,6705,Corban,10224,District de Delémont,29,16119,6730,Val Terbi,10224,District de Delémont,26
+3621,01.01.2018,15625,6730,Val Terbi,10224,District de Delémont,26,16119,6730,Val Terbi,10224,District de Delémont,26
+3622,01.01.2018,13350,6803,Rocourt,10226,District de Porrentruy,29,16120,6809,Haute-Ajoie,10226,District de Porrentruy,26
+3622,01.01.2018,14971,6809,Haute-Ajoie,10226,District de Porrentruy,26,16120,6809,Haute-Ajoie,10226,District de Porrentruy,26
+3623,01.04.2018,16088,6417,La Grande-Béroche,10320,Canton de Neuchâtel,23,16121,6417,La Grande Béroche,10320,Canton de Neuchâtel,23
