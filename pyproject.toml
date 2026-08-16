@@ -45,10 +45,12 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=5.0.0",
     "respx>=0.21.0",
-    # Exakt gepinnt, identisch zum Pin in .github/workflows/ci.yml. ruff ist ein
-    # Gate, kein Hilfsmittel: Mit einem offenen Bereich holt
-    # `pip install -e ".[dev]"` die jeweils neueste Version, und lokal laeuft
-    # ein anderes Gate als in der CI. Beide Stellen zusammen bumpen.
+    # Exakt gepinnt, nicht `>=`: ruff ist ein Gate, kein Hilfsmittel. Eine
+    # neuere Version meldet Abweichungen an Code, den niemand angefasst hat.
+    # Der Pin steht hier und nur hier — die CI installiert ihn ueber das
+    # `dev`-Extra mit und hat keinen eigenen Pin-Schritt mehr. Beim Anheben:
+    # Version aendern, `ruff format` einmal ueber die gelinteten Pfade laufen
+    # lassen und das Ergebnis mit committen.
     "ruff==0.16.1",
     "bandit>=1.7.0",
     "pip-audit>=2.7.0",
