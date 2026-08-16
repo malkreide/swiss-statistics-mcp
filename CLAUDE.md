@@ -74,6 +74,19 @@ ruff format --check src/ tests/ scripts/
 python scripts/check_version_sync.py
 ```
 
+**Ein fünftes Gate steht in einem zweiten Job:** `security` fährt
+`bandit -r src/ -ll` auf Python 3.12 — der einzige Schritt im Repo ausserhalb
+der Matrix. `-ll` hebt die Schwelle auf Severity *medium*; Low-Befunde
+erscheinen im Bericht, färben den Lauf aber nicht rot.
+
+Beim Lesen der Bandit-Zusammenfassung die zwei Blöcke nicht verwechseln:
+«by severity» und «by confidence» sehen gleich aus. Ein `High: 2` im zweiten
+heisst zwei Low-Befunde mit hoher Konfidenz, nicht zwei Hochrisiko-Funde.
+Der Stand heute ist `No issues identified`, Exit 0.
+
+Die vier Matrix-Gates laufen auf allen drei Versionen, keine `if:`-Ausnahme;
+ein `fail-fast: false` steht nicht da.
+
 **Live-Tests: geplanter Workflow vorhanden.** `.github/workflows/live-tests.yml`,
 `cron: "53 5 * * 1"` plus `workflow_dispatch`. Die Live-Suite ist also nicht bloss
 per `-m "not live"` ausgeschlossen — DRIFT-005 ist hier erfüllt. `schedule`
