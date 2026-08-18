@@ -66,7 +66,9 @@ dort. Eine `.pre-commit-config.yaml` gibt es nicht; wenn eine dazukommt, muss
 sie dieselbe Version aus `pyproject.toml` beziehen und keine zweite nennen.
 
 Vor dem Lauf `ruff --version` prüfen: ein älteres ruff früher im `PATH`
-schlägt den Pin, ohne dass der Install etwas meldet.
+schlägt den Pin, ohne dass der Install etwas meldet. `python -m ruff …` nimmt
+das installierte Modul und ist der Ausweg, solange das PATH-Binary fremd ist;
+`scripts/check_ruff_pin.py` prüft beide Wege.
 
 **Gates, wörtlich aus `ci.yml`** (Matrix: Python 3.11 / 3.12 / 3.13):
 
@@ -78,17 +80,24 @@ ruff format --check src/ tests/ scripts/
 python scripts/check_version_sync.py
 ```
 
-**Ein fünftes Gate steht in einem zweiten Job:** `security` fährt
-`bandit -r src/ -ll` auf Python 3.12 — der einzige Schritt im Repo ausserhalb
-der Matrix. `-ll` hebt die Schwelle auf Severity *medium*; Low-Befunde
-erscheinen im Bericht, färben den Lauf aber nicht rot.
+**Zwei weitere Gates stehen in einem zweiten Job:** `security` fährt auf
+Python 3.12 `bandit -r src/ -ll` und `pip-audit` — die einzigen Schritte im
+Repo ausserhalb der Matrix. `-ll` hebt die Bandit-Schwelle auf Severity
+*medium*; Low-Befunde erscheinen im Bericht, färben den Lauf aber nicht rot.
+
+`pip-audit` läuft bewusst ohne `--strict`: strict wertet den editierbaren
+Install des eigenen Pakets als harten Fehler und wäre dauerhaft rot. Lokal
+prüft es die ganze Umgebung, nicht nur die Projekt-Deps — in einem Container
+färben dessen Systempakete (`setuptools`, `wheel`) es rot, während die CI mit
+frischem `setup-python` startet. Vor dem Melden also erst prüfen, wessen
+Paket der Befund betrifft.
 
 Beim Lesen der Bandit-Zusammenfassung die zwei Blöcke nicht verwechseln:
 «by severity» und «by confidence» sehen gleich aus. Ein `High: 2` im zweiten
 heisst zwei Low-Befunde mit hoher Konfidenz, nicht zwei Hochrisiko-Funde.
 Der Stand heute ist `No issues identified`, Exit 0.
 
-Die vier Matrix-Gates laufen auf allen drei Versionen, keine `if:`-Ausnahme;
+Die fünf Matrix-Gates laufen auf allen drei Versionen, keine `if:`-Ausnahme;
 ein `fail-fast: false` steht nicht da.
 
 **Live-Tests: geplanter Workflow vorhanden.** `.github/workflows/live-tests.yml`,
