@@ -133,7 +133,11 @@ fi
 
 printf '%s\n' "⚠️  Klon veraltet: HEAD liegt $commits hinter origin/$default_branch."
 printf '%s\n' "   Vor der Arbeit aktualisieren, z. B.:"
-printf '%s\n' "     git fetch origin $default_branch && git merge --ff-only FETCH_HEAD"
+# Ein Befehl statt zweier mit `&&`: Windows PowerShell 5.1 kennt `&&` nicht
+# ("Das Token "&&" ist in dieser Version kein gueltiges Anweisungstrennzeichen"),
+# und der Vorschlag scheitert ausgerechnet in dem Moment, in dem er helfen soll.
+# `git pull --ff-only` tut dasselbe und laeuft in PowerShell, cmd, bash und zsh.
+printf '%s\n' "     git pull --ff-only origin $default_branch"
 printf '%s\n' "   Grund: Ein veralteter Klon erzeugt eine rote CI, deren Ursache nicht im"
 printf '%s\n' "   Diff steht -- die fehlenden Commits sind dann genau die, die das Gate"
 printf '%s\n' "   eingefuehrt haben, an dem der Branch scheitert (2x am 3.8.2026)."
