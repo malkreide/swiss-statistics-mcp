@@ -127,6 +127,21 @@ class TestMeldung(HookHarness):
         self.assertEqual(res.returncode, 0)
         self.assertEqual(res.stdout.strip(), "")
 
+    def test_vorschlag_laeuft_auch_in_powershell(self) -> None:
+        """Der vorgeschlagene Befehl darf kein `&&` enthalten.
+
+        Windows PowerShell 5.1 kennt `&&` nicht und bricht mit «Das Token "&&"
+        ist in dieser Version kein gueltiges Anweisungstrennzeichen» ab — der
+        Vorschlag scheitert also ausgerechnet auf der Maschine, der er helfen
+        soll. Gemeldet am 20.8.2026 aus einer PowerShell-Sitzung.
+
+        Gegenprobe: Mit `git fetch ... && git merge ...` faellt dieser Test.
+        """
+        self.advance_origin(2)
+        res = self.run_hook()
+        self.assertIn("git pull --ff-only origin", res.stdout)
+        self.assertNotIn("&&", res.stdout)
+
     def test_grund_steht_in_der_meldung(self) -> None:
         """Die Meldung erklaert, warum sie da ist — sonst wird sie weggeklickt."""
         self.advance_origin(2)

@@ -59,6 +59,17 @@ Reihenfolge: erst `refs/remotes/origin/HEAD` (lokal, kostet kein Netz), sonst
 `git ls-remote --symref origin HEAD`. Bleibt beides ohne Antwort, schweigt der
 Hook — ein Fallback auf `main` wäre wieder dieselbe Annahme.
 
+### Der vorgeschlagene Befehl ist shell-unabhängig
+
+Die Meldung schlägt `git pull --ff-only origin <branch>` vor — ein Befehl, nicht
+zwei mit `&&`. Windows PowerShell 5.1 kennt `&&` nicht und bricht mit «Das Token
+"&&" ist in dieser Version kein gültiges Anweisungstrennzeichen» ab; der
+Vorschlag scheitert dort also ausgerechnet in dem Moment, in dem er helfen soll
+(gemeldet am 20.8.2026 aus einer PowerShell-Sitzung). `git pull --ff-only` tut
+dasselbe und läuft in PowerShell, cmd, bash und zsh gleichermassen. Mit `;` zu
+verketten wäre kein Ersatz: das führt den zweiten Befehl auch dann aus, wenn der
+`fetch` scheitert.
+
 ### Wann er läuft
 
 Bei jedem Sessionstart und bei `resume`. Nach `clear` und `compact` schweigt er
