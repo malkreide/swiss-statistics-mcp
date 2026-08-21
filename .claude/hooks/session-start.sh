@@ -132,12 +132,33 @@ else
 fi
 
 printf '%s\n' "⚠️  Klon veraltet: HEAD liegt $commits hinter origin/$default_branch."
-printf '%s\n' "   Vor der Arbeit aktualisieren, z. B.:"
-# Ein Befehl statt zweier mit `&&`: Windows PowerShell 5.1 kennt `&&` nicht
-# ("Das Token "&&" ist in dieser Version kein gueltiges Anweisungstrennzeichen"),
-# und der Vorschlag scheitert ausgerechnet in dem Moment, in dem er helfen soll.
-# `git pull --ff-only` tut dasselbe und laeuft in PowerShell, cmd, bash und zsh.
-printf '%s\n' "     git pull --ff-only origin $default_branch"
+
+# Der Vorschlag haengt davon ab, wo HEAD steht -- ein `pull` bewegt IMMER den
+# ausgecheckten Branch, nicht den, dessen Namen man tippt. Wer auf einem
+# Feature-Branch `git pull --ff-only origin main` ausfuehrt, zieht den
+# Feature-Branch auf main vor und hat danach fremde Commits darauf. Genau das
+# ist am 20.8.2026 in dieser Sitzung passiert.
+#
+# Kein `&&` in den Befehlen: Windows PowerShell 5.1 kennt es nicht ("Das Token
+# "&&" ist in dieser Version kein gueltiges Anweisungstrennzeichen"), und der
+# Vorschlag scheitert dann ausgerechnet in dem Moment, in dem er helfen soll.
+current_branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null)"
+
+if [ "$current_branch" = "$default_branch" ]; then
+  printf '%s\n' "   Vor der Arbeit aktualisieren:"
+  printf '%s\n' "     git pull --ff-only origin $default_branch"
+else
+  if [ -n "$current_branch" ]; then
+    printf '%s\n' "   HEAD steht auf '$current_branch', nicht auf '$default_branch'."
+  else
+    printf '%s\n' "   HEAD ist detached, steht also nicht auf '$default_branch'."
+  fi
+  printf '%s\n' "   Nur die Referenz holen, ohne HEAD zu bewegen:"
+  printf '%s\n' "     git fetch origin $default_branch"
+  printf '%s\n' "   Den neuen Stand in den eigenen Branch zu uebernehmen ist ein eigener,"
+  printf '%s\n' "   bewusster Schritt (merge oder rebase, je nach Konvention des Repos)."
+fi
+
 printf '%s\n' "   Grund: Ein veralteter Klon erzeugt eine rote CI, deren Ursache nicht im"
 printf '%s\n' "   Diff steht -- die fehlenden Commits sind dann genau die, die das Gate"
 printf '%s\n' "   eingefuehrt haben, an dem der Branch scheitert (2x am 3.8.2026)."
