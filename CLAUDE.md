@@ -57,7 +57,27 @@ Merge-Konflikt: GitHub berechnet dafür keinen Merge-Commit und startet nichts.
 
 Ein Codex-Review auf einem PR wird beantwortet oder behoben, nie ignoriert.
 
+**CI-Status aus einer Web-Session: nur über die GitHub-MCP-Tools.** Zwei Wege
+sehen richtig aus und sagen beide still das Falsche. `curl` gegen
+`api.github.com` beantwortet der Agent-Proxy mit **403** — ein Poll-Loop oder
+ein `Monitor` darauf meldet nie etwas, und Stille sieht aus wie «läuft noch».
+`pull_request_read`/`get_status` wiederum liefert Commit-*Statuses*; GitHub
+Actions laufen als Check-*Runs* und erscheinen dort nie, also steht da dauerhaft
+`state: pending, total_count: 0` — auch bei längst grüner CI. Belastbar ist
+allein `mcp__github__actions_list` / `actions_get` mit `status` und
+`conclusion` des Workflow-Runs. Am 20./21.8.2026 beide Fallen je einmal
+gestellt; die erste kostete einen abgelaufenen Monitor, die zweite fast die
+Meldung «CI läuft noch», während sie längst grün war.
+
 ## Teil 2 — Dieses Repo
+
+**Die Klon-Aktualitätsprüfung aus Teil 1 läuft hier automatisch.**
+`.claude/hooks/session-start.sh` meldet sie beim Sessionstart und schweigt,
+wenn nichts fehlt. Er blockiert nie — kein Netz, kein Remote, detached HEAD
+gehen still durch. Sein Update-Vorschlag richtet sich danach, wo `HEAD` steht:
+`pull --ff-only` nur auf dem Default-Branch, sonst `fetch`, weil `pull` immer
+den ausgecheckten Branch bewegt und nicht den, dessen Namen man tippt.
+Details und Verhaltenstabelle in `.claude/hooks/README.md`.
 
 
 **ruff: eine Quelle.** `pyproject.toml`, `dev`-Extra, `ruff==0.16.1`. Die CI
