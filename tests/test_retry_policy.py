@@ -25,6 +25,21 @@ import swiss_statistics_mcp.server as srv
 
 URL = "https://example.test/x"
 
+# Wall-clock numbers for the deadline test below, spread far enough apart that
+# scheduler jitter cannot move the outcome. Measured on 3.11 over 15 runs of
+# that test's own body, through pytest so every fixture is in place:
+# 0.0507-0.0509s against a 0.05s budget. Unlike the sibling servers there is no
+# setup to move out of the way — `_retrying_http` drives a plain coroutine
+# factory, no client is built — so the window already holds the budget and
+# nothing else. What was missing is absolute room: the old bound of 0.25s left
+# 0.199s, and CI jitter is absolute, not proportional. In swiss-efv-mcp a
+# loaded runner turned 0.105s into 0.55s on 2026-08-21 and tore the same
+# assertion there. Raising the budget does not shrink that stall, it makes the
+# stall small *relative to* what is measured.
+_BUDGET = 0.5
+_CUT_BY = 2.5
+_SLOW_RESPONSE = 8.0
+
 
 def _resp(status: int, retry_after: str | None = None) -> httpx.Response:
     headers = {"Retry-After": retry_after} if retry_after is not None else {}
@@ -195,17 +210,27 @@ async def test_a_slow_response_is_cut_by_the_wall_clock_deadline(monkeypatch):
     It also shows why `stop_after_delay` would not have been enough: tenacity
     declines to start a *new* attempt past the delay, but cannot cut one that
     is already running, and one slow attempt is exactly this failure.
+
+    The margins are wide on purpose — see `_BUDGET` above for the measurement
+    that set them.
     """
-    monkeypatch.setattr(srv, "RETRY_TOTAL_BUDGET", 0.05)
+    monkeypatch.setattr(srv, "RETRY_TOTAL_BUDGET", _BUDGET)
 
     async def _slow():
-        await asyncio.sleep(0.30)
+        await asyncio.sleep(_SLOW_RESPONSE)
         return {"ok": True}
 
     started = time.monotonic()
     with pytest.raises(TimeoutError):
         await srv._retrying_http(_slow)
-    assert time.monotonic() - started < 0.25, "HTTP_TIMEOUT is not a budget"
+    elapsed = time.monotonic() - started
+
+    # Two-sided on purpose. The upper bound is the guarantee: a call that would
+    # have taken _SLOW_RESPONSE was cut. The lower bound says the cut came from
+    # the budget rather than from something failing straight away — a deadline
+    # computed wrong sails through an upper bound alone.
+    assert elapsed >= _BUDGET / 2, f"cut too early to be the budget: {elapsed:.3f}s"
+    assert elapsed < _CUT_BY, f"HTTP_TIMEOUT is not a budget: {elapsed:.2f}s"
 
 
 async def test_the_budget_bounds_the_whole_ladder_not_one_attempt(monkeypatch):
