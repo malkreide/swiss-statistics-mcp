@@ -59,10 +59,29 @@ Reihenfolge: erst `refs/remotes/origin/HEAD` (lokal, kostet kein Netz), sonst
 `git ls-remote --symref origin HEAD`. Bleibt beides ohne Antwort, schweigt der
 Hook — ein Fallback auf `main` wäre wieder dieselbe Annahme.
 
-### Der vorgeschlagene Befehl ist shell-unabhängig
+### Der vorgeschlagene Befehl hängt davon ab, wo HEAD steht
 
-Die Meldung schlägt `git pull --ff-only origin <branch>` vor — ein Befehl, nicht
-zwei mit `&&`. Windows PowerShell 5.1 kennt `&&` nicht und bricht mit «Das Token
+`git pull` bewegt **immer den ausgecheckten Branch**, nicht den, dessen Namen
+man tippt. Wer auf einem Feature-Branch `git pull --ff-only origin main`
+ausführt, zieht damit den Feature-Branch auf `main` vor und hat danach fremde
+Commits darauf — am 20.8.2026 genau so passiert, der Stop-Hook meldete
+anschliessend einen «ungepushten Commit», der in Wahrheit GitHubs Merge-Commit
+war. Der Hook unterscheidet deshalb:
+
+| HEAD steht auf | Vorschlag |
+| --- | --- |
+| dem Default-Branch | `git pull --ff-only origin <branch>` |
+| einem anderen Branch | `git fetch origin <branch>` — bewegt HEAD nicht |
+| detached | `git fetch origin <branch>` — dito |
+
+Im zweiten und dritten Fall bleibt das Übernehmen in den eigenen Branch ein
+eigener, bewusster Schritt (merge oder rebase, je nach Konvention des Repos).
+Der Hook entscheidet das nicht für einen: Auf einem fremden Branch wäre ein
+Rebase ein Eingriff in dessen Historie.
+
+### Kein `&&` in den Vorschlägen
+
+Beide Vorschläge sind ein einzelner Befehl, nicht zwei mit `&&`. Windows PowerShell 5.1 kennt `&&` nicht und bricht mit «Das Token
 "&&" ist in dieser Version kein gültiges Anweisungstrennzeichen» ab; der
 Vorschlag scheitert dort also ausgerechnet in dem Moment, in dem er helfen soll
 (gemeldet am 20.8.2026 aus einer PowerShell-Sitzung). `git pull --ff-only` tut

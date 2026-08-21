@@ -122,6 +122,38 @@ class TestMeldung(HookHarness):
         self.assertIn("1 Commit hinter", res.stdout)
         self.assertNotIn("1 Commits", res.stdout)
 
+    def test_auf_dem_default_branch_wird_gepullt(self) -> None:
+        self.advance_origin(2)
+        res = self.run_hook()
+        self.assertIn(f"git pull --ff-only origin {self.default_branch}", res.stdout)
+        self.assertNotIn("git fetch origin", res.stdout)
+
+    def test_auf_einem_feature_branch_nur_fetch(self) -> None:
+        """`pull` bewegt IMMER den ausgecheckten Branch, nicht den getippten.
+
+        Wer auf einem Feature-Branch `git pull --ff-only origin main` ausfuehrt,
+        zieht den Feature-Branch auf main vor und hat danach fremde Commits
+        darauf. Am 20.8.2026 genau so passiert. Auf einem Feature-Branch darf
+        der Hook darum nur `fetch` vorschlagen — das bewegt HEAD nicht.
+
+        Gegenprobe: Mit einem unbedingten `pull`-Vorschlag faellt dieser Test.
+        """
+        self.advance_origin(2)
+        git("checkout", "-q", "-b", "thema", cwd=self.clone)
+        res = self.run_hook()
+        self.assertIn(f"git fetch origin {self.default_branch}", res.stdout)
+        self.assertNotIn("git pull", res.stdout)
+        self.assertIn("thema", res.stdout)
+
+    def test_detached_head_bekommt_auch_nur_fetch(self) -> None:
+        """Auf einen detached HEAD laesst sich ohnehin nicht sinnvoll pullen."""
+        self.advance_origin(2)
+        git("checkout", "-q", "--detach", "HEAD", cwd=self.clone)
+        res = self.run_hook()
+        self.assertIn(f"git fetch origin {self.default_branch}", res.stdout)
+        self.assertNotIn("git pull", res.stdout)
+        self.assertIn("detached", res.stdout)
+
     def test_aktueller_stand_schweigt(self) -> None:
         res = self.run_hook()
         self.assertEqual(res.returncode, 0)
@@ -139,8 +171,12 @@ class TestMeldung(HookHarness):
         """
         self.advance_origin(2)
         res = self.run_hook()
-        self.assertIn("git pull --ff-only origin", res.stdout)
         self.assertNotIn("&&", res.stdout)
+
+        # Gegenprobe auch fuer den Feature-Branch-Zweig: dort steht ein anderer
+        # Befehl, `&&` darf auch dort nicht auftauchen.
+        git("checkout", "-q", "-b", "thema", cwd=self.clone)
+        self.assertNotIn("&&", self.run_hook().stdout)
 
     def test_grund_steht_in_der_meldung(self) -> None:
         """Die Meldung erklaert, warum sie da ist — sonst wird sie weggeklickt."""
