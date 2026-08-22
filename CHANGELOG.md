@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Hinzugefuegt
+
+- **Frischehinweise auf `tools/list` und `server/discover`** (SEP-2549, Spec
+  `2026-07-28`): `ttlMs` 300000, `cacheScope` `public`. Das SDK setzt beides von
+  sich aus auf «sofort veraltet, nie geteilt» — wer nichts übergibt, verhält
+  sich also nicht neutral, sondern lässt jeden Client bei jeder Verbindung neu
+  auflisten, für eine Liste, die beim Import feststeht und für jeden Aufrufer
+  dieselbe ist. `prompts/list` und `resources/list` bleiben ungesetzt: dieser
+  Server registriert weder das eine noch das andere.
+
 ### Hinzugefuegt — die Fixtures sind aufgezeichnet, nicht mehr ausgedacht
 
 **`scripts/record_fixtures.py`** zeichnet von allen vier Quellen auf — AGVCH,
