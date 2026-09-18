@@ -6,6 +6,13 @@ SDK fuellt keines von beiden — `CacheHint()` defaultet auf `ttl_ms=0`,
 ohne `cache_hints` verhaelt sich also nicht neutral: er laesst jeden Client bei
 jeder Verbindung neu auflisten, fuer Verzeichnisse, die beim Import feststehen.
 
+Das gilt auch fuer die *leeren* Verzeichnisse. `prompts/list` und
+`resources/list` blieben hier zuerst ungesetzt, begruendet damit, dieser Server
+registriere weder das eine noch das andere. Das war aus der Registrierung
+geschlossen statt gemessen: `MCPServer` registriert die Handler unbedingt, der
+Draht antwortet auf beide mit `200` und einer leeren Liste. Die Flaeche gibt es
+— sie ist bloss leer, und sie kann sich nicht fuellen.
+
 Geprueft ueber eine echte `ClientSession` statt durch Ruecklesen von
 `CACHE_HINTS`: `MCPServer` fuellt den Hinweis feldweise und nur, wo der Handler
 nichts gesetzt hat — ein Blick ins Dict waere auch dann gruen, wenn das Argument
@@ -63,3 +70,33 @@ def test_kein_hinweis_auf_einer_inhalts_methode() -> None:
     `resources/read` und `prompts/get` liefern Inhalt, kein Verzeichnis."""
     assert "resources/read" not in CACHE_HINTS
     assert "prompts/get" not in CACHE_HINTS
+
+
+async def test_auch_die_leeren_verzeichnisse_tragen_die_ttl() -> None:
+    """Der Fall, der vorher durchfiel — weil «leer» mit «gibt es nicht»
+    verwechselt worden war."""
+    async with Client(mcp) as client:
+        prompts = await client.list_prompts()
+        resources = await client.list_resources()
+
+    assert prompts.prompts == [] and resources.resources == [], (
+        "dieser Server registriert weder Prompts noch Ressourcen; sind hier "
+        "welche aufgetaucht, ist der `public`-Scope neu zu bewerten"
+    )
+    for name, result in (("prompts/list", prompts), ("resources/list", resources)):
+        assert result.ttl_ms == LIST_CACHE_TTL_MS, f"{name} antwortete mit ttlMs={result.ttl_ms}"
+        assert result.cache_scope == "public", name
+
+
+def test_jedes_verzeichnis_der_spec_ist_gehinweist() -> None:
+    """Vorwaertsgerichtet: faellt dieser Test, hat das SDK eine cachebare
+    Methode bekommen, ueber die dieser Server noch nichts gesagt hat.
+
+    Formuliert als Mengengleichheit und nicht als Aufzaehlung der heute
+    bekannten Namen — eine Aufzaehlung waere an dem Tag gruen, an dem eine
+    neue Methode dazukommt, und genau dann soll sie rot sein. `resources/read`
+    ist die einzige Ausnahme: sie liefert Inhalt, kein Verzeichnis.
+    """
+    verzeichnisse = set(CACHEABLE_METHODS) - {"resources/read"}
+    fehlend = sorted(verzeichnisse - set(CACHE_HINTS))
+    assert not fehlend, f"cachebare Verzeichnisse ohne Frischehinweis: {fehlend}"

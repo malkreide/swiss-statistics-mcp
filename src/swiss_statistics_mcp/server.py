@@ -42,6 +42,8 @@ from tenacity import (
     stop_after_attempt,
 )
 
+from . import __description__, __homepage__, __version__
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -1370,22 +1372,74 @@ def _format_jsonstat2_as_table(data: dict[str, Any], max_rows: int = 500) -> dic
 # Sobald eine Liste vom Aufrufer abhaengt, muss der Scope im selben Commit auf
 # `private` wechseln.
 #
-# `prompts/list` und `resources/list` bleiben ungesetzt: dieser Server
-# registriert weder Prompts noch Ressourcen, und ein Hinweis darauf beschriebe
-# eine Flaeche, die es nicht gibt.
+# `prompts/list`, `resources/list` und `resources/templates/list` standen hier
+# zuerst ungesetzt, begruendet damit, ein Hinweis beschriebe eine Flaeche, die
+# es nicht gibt. Das war aus der Registrierung geschlossen, nicht gemessen —
+# und falsch: `MCPServer` registriert die drei Handler unbedingt, der Draht
+# antwortet auf alle drei mit `200` und einer leeren Liste. Die Flaeche gibt es
+# also; sie ist bloss leer.
+#
+# Damit gilt das Argument von oben fuer sie unveraendert, und zwar staerker:
+# diese Verzeichnisse stehen nicht nur beim Import fest, sie koennen sich
+# ueberhaupt nicht fuellen — Prompts und Ressourcen werden per Dekorator
+# registriert, und es gibt keinen. Ein Client, der «keine Prompts» fuenf
+# Minuten cached, cached damit etwas dauerhaft Richtiges.
+#
+# Nicht gehinweist bleiben die *Inhalts*-Methoden (`resources/read`,
+# `prompts/get`): sie liefern kein Verzeichnis. Die Grenze haelt
+# `tests/test_cache_hints.py` fest.
 LIST_CACHE_TTL_MS = 300_000
+
+# Ein Objekt fuer alle fuenf: derselbe Hinweis, fuenfmal frisch konstruiert,
+# laedt dazu ein, ihn an einer Stelle zu aendern und an vier nicht.
+_LIST_HINT = CacheHint(ttl_ms=LIST_CACHE_TTL_MS, scope="public")
 
 # Annotiert, nicht inferiert: `MCPServer` nimmt
 # `Mapping[CacheableMethod, CacheHint]`, und ein Dict-Literal ohne Annotation
 # inferiert mypy als `str`. Zur Laufzeit stimmt beides — ein `mypy src/`-Gate
 # meldet den Unterschied, die Tests nicht.
 CACHE_HINTS: dict[CacheableMethod, CacheHint] = {
-    "tools/list": CacheHint(ttl_ms=LIST_CACHE_TTL_MS, scope="public"),
-    "server/discover": CacheHint(ttl_ms=LIST_CACHE_TTL_MS, scope="public"),
+    "tools/list": _LIST_HINT,
+    "server/discover": _LIST_HINT,
+    "prompts/list": _LIST_HINT,
+    "resources/list": _LIST_HINT,
+    "resources/templates/list": _LIST_HINT,
 }
 
+# Spec 2026-07-28, #3002: das SDK stempelt `serverInfo` in das `_meta` *jeder*
+# modernen Antwort — nicht einmal beim Handshake, sondern bei jedem Resultat.
+# Was dort steht, entscheidet allein der Konstruktor: «An unversioned server
+# reports an empty `version`; the SDK never substitutes its own»
+# (`mcp/server/lowlevel/server.py`).
+#
+# Gemessen statt angenommen — vor dieser Aenderung trug jede Antwort:
+#
+#     "_meta": {"io.modelcontextprotocol/serverInfo":
+#               {"name": "swiss_statistics_mcp", "version": ""}}
+#
+# Eine leere Version ist keine fehlende Angabe, sondern eine falsche: sie
+# behauptet, der Server habe eine Identitaet, und liefert davon das Feld nicht
+# mit, an dem ein Client-Cache, eine Registry oder ein Log zwei Staende
+# auseinanderhalten. `server.json` fuehrt `description` und `websiteUrl` seit
+# jeher — der Draht fuehrte beides nicht. Das war die Drift, nicht die Luecke.
+#
+# `version`, `description` und `website_url` kommen aus den Paket-Metadaten,
+# nicht aus Literalen. Fuer die Version verbietet `scripts/check_version_sync.py`
+# das Literal ohnehin; fuer die anderen beiden gilt derselbe Grund ohne Gate:
+# als Literal hier waeren sie je eine dritte Fassung neben `pyproject.toml` und
+# `server.json` — und die einzige, die niemand nachfuehrt, weil sie nirgends
+# sichtbar ist. `title` steht als Literal da, weil es diese Angabe sonst
+# nirgends gibt: ein Anzeigename ist keine Paket-Metadate.
+#
+# `icons` bleibt ungesetzt: dieses Repo hostet keine Icon-Assets, und eine URL
+# zu erfinden, hinter der nichts liegt, waere schlechter als das Feld
+# wegzulassen.
 mcp = MCPServer(
     "swiss_statistics_mcp",
+    title="Swiss Statistics (BFS STAT-TAB)",
+    version=__version__,
+    description=__description__,
+    website_url=__homepage__,
     cache_hints=CACHE_HINTS,
     instructions=(
         "Access Swiss Federal Statistical Office (BFS/OFS/UST) data via STAT-TAB. "
@@ -3240,13 +3294,13 @@ async def bfs_construction_investment(
 
 CKAN_API_BASE = "https://ckan.opendata.swiss/api/3/action"
 
-try:  # UA carries the real package version so BFS can attribute traffic.
-    from importlib.metadata import version as _pkg_version
-
-    _UA_VERSION = _pkg_version("swiss-statistics-mcp")
-except Exception:  # pragma: no cover - fallback when metadata is unavailable
-    _UA_VERSION = "0.0.0"
-CKAN_USER_AGENT = f"swiss-statistics-mcp/{_UA_VERSION}"
+# UA carries the real package version so BFS can attribute traffic. Die Nummer
+# kommt aus `__version__` und damit aus denselben Paket-Metadaten, die auch die
+# `serverInfo`-Identitaet speist — vorher stand hier ein zweiter, eigener
+# `importlib.metadata`-Aufruf mit einem *anderen* Fallback (`0.0.0` statt
+# `0.0.0+source`). Zwei Lookups auf dieselbe Quelle sind keine Redundanz,
+# sondern zwei Wahrheiten: sie koennen sich nur unterscheiden, nie ergaenzen.
+CKAN_USER_AGENT = f"swiss-statistics-mcp/{__version__}"
 
 BFS_PRICE_ATTRIBUTION = (
     "Bundesamt für Statistik (BFS) — Preisindizes via opendata.swiss (CKAN) "

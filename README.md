@@ -457,9 +457,36 @@ other era is refused.
 Both revisions are pinned in
 [`tests/test_protocol_version.py`](tests/test_protocol_version.py) and asserted
 against the installed SDK, so a Dependabot bump of `mcp` cannot move either one
-silently. This server builds no ASGI app to send an `initialize` through, so
-the gate asserts the SDK constants rather than a measured response — the
-weaker form, named rather than left unsaid.
+silently. The same file also reads the negotiated revision off a real
+connection, and [`tests/test_modern_wire.py`](tests/test_modern_wire.py) drives
+the ASGI app from `streamable_http_app()` over HTTP: `server/discover`, the
+`serverInfo` stamp, the `resultType` that `2026-07-28` makes mandatory, the
+SEP-2549 freshness hint, and the named rejection of a half-built envelope.
+
+Both forms stay. A measured connection says which revision was negotiated
+*today* — if an SDK bump moves the ceiling, it silently measures the new one.
+Only the constant pin catches that. They assert different things; neither
+replaces the other.
+
+### Server identity
+
+The modern era stamps `serverInfo` into the `_meta` of **every** result, not
+once per connection, and the SDK substitutes nothing: *"An unversioned server
+reports an empty `version`."* This server therefore declares `title`,
+`version`, `description` and `website_url` at construction, so every response
+carries the same identity that [`server.json`](server.json) publishes.
+
+`version`, `description` and `website_url` are read from the package metadata
+rather than written as literals: a literal here would be a third copy beside
+`pyproject.toml` and `server.json`, and the only one nobody keeps current
+because it is visible nowhere. `title` stays a literal — a display name is not
+package metadata.
+
+`icons` is deliberately unset — this repository hosts no icon assets, and
+inventing a URL with nothing behind it is worse than omitting the field. For the
+same reason an absent field beats an empty one: `website_url` is `str | None`
+with no URL validation, and the stamp is dumped with `exclude_none`, so `None`
+omits the field while `""` ships `"websiteUrl": ""` to every caller.
 
 Note that the SDK's `LATEST_PROTOCOL_VERSION` is an alias for the **modern**
 era, not for the handshake era — pinning against it alone would leave the era
