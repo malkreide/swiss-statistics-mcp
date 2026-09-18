@@ -9,13 +9,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Hinzugefuegt
 
-- **Frischehinweise auf `tools/list` und `server/discover`** (SEP-2549, Spec
+- **`serverInfo`-Identitaet auf dem Draht** (Spec `2026-07-28`, #3002).
+  `MCPServer` bekommt `title`, `version`, `description` und `website_url`.
+  Die moderne Aera stempelt `serverInfo` in das `_meta` **jeder** Antwort, nicht
+  einmal pro Verbindung — und das SDK setzt dort nichts nach: «An unversioned
+  server reports an empty `version`; the SDK never substitutes its own».
+
+  Gemessen, nicht vermutet: vorher trug jede moderne Antwort
+  `{"name": "swiss_statistics_mcp", "version": ""}`, waehrend `server.json`
+  `description` und `websiteUrl` seit jeher fuehrt. Das war keine Luecke
+  zwischen Server und Spec, sondern eine Drift zwischen Manifest und Draht —
+  die Sorte, die niemandem auffaellt, weil beide Seiten fuer sich gruen
+  aussehen. Eine leere Version ist dabei keine fehlende Angabe, sondern eine
+  falsche: sie behauptet eine Identitaet und liefert das Feld nicht mit, an dem
+  ein Client-Cache, eine Registry oder ein Log zwei Staende auseinanderhalten.
+
+  `version`, `description` und `website_url` kommen aus den Paket-Metadaten,
+  nicht aus Literalen: als Literal waere jedes eine dritte Fassung neben
+  `pyproject.toml` und `server.json` — und die einzige, die niemand nachfuehrt,
+  weil sie nirgends sichtbar ist. Ein Test vergleicht deshalb nicht «ist
+  gesetzt», sondern «ist der Metadaten-Wert». `title` bleibt ein Literal, weil
+  es diese Angabe sonst nirgends gibt; ein Anzeigename ist keine Paket-Metadate.
+
+  `icons` bleibt ungesetzt — dieses Repo hostet keine Assets, und eine URL zu
+  erfinden, hinter der nichts liegt, waere schlechter als das Feld wegzulassen.
+
+  Nebenbefund, nachgemessen und als Test festgehalten: `website_url` ist
+  `str | None` **ohne** URL-Pruefung, und der Stempel wird mit `exclude_none`
+  gedumpt. `None` laesst das Feld weg, `""` schickt `"websiteUrl": ""` an jeden
+  Aufrufer. Ein leeres Feld ist schlechter als ein fehlendes — es behauptet
+  Anwesenheit. Genau das war die leere `version`.
+
+- **Die Version hat in `src/` nur noch eine Quelle.** Der User-Agent fuer
+  opendata.swiss las die Paket-Metadaten bis hierher in einem *zweiten*,
+  eigenen `importlib.metadata`-Aufruf aus — mit einem anderen Fallback
+  (`0.0.0` statt `0.0.0+source`). Zwei Lookups auf dieselbe Quelle sind keine
+  Redundanz, sondern zwei Wahrheiten: sie koennen sich nur unterscheiden, nie
+  ergaenzen. Beide speisen sich jetzt aus `__version__`, und ein Test haelt sie
+  zusammen.
+
+- **Die moderne Aera ist an der Drahtform gemessen**
+  (`tests/test_modern_wire.py`). `MCPServer.streamable_http_app()` gibt die
+  ASGI-App her; die Tests fahren sie mit gefahrenem Lifespan und pruefen an
+  echten Antworten: `server/discover`, den `serverInfo`-Stempel, das ab
+  `2026-07-28` verpflichtende `resultType`, den SEP-2549-Frischehinweis, das
+  `outputSchema` aller 15 Werkzeuge, die benannte Abweisung eines halben
+  Envelopes — und dass der DNS-Rebinding-Schutz scharf ist.
+
+  Warum `tests/test_cache_hints.py` das nicht schon erledigt: der
+  In-Process-`Client` dispatcht ueber ein `DirectDispatcher`-Paar, «no streams,
+  no JSON-RPC framing». Er erreicht die Handler, aber nie den HTTP-Eingang —
+  und genau dort liegt das Era-Routing, das **header-basiert** ist.
+
+  Drei Fallen stehen im Modul-Docstring, weil sie alle drei wie etwas anderes
+  aussehen: ohne ASGI-Lifespan endet jede Anfrage in einem `RuntimeError`, der
+  nicht nach «Lifespan fehlt» aussieht; gegen den Host `test` antwortet das SDK
+  mit **421** (kein Testfehler, sondern der aktive Rebinding-Schutz); und mit
+  dem Envelope-Schluessel `protocol-version` statt `protocolVersion` faellt die
+  Anfrage aus dem modernen Routing und bekommt «Missing session ID» — eine
+  Meldung aus der *Legacy*-Haelfte, die ueber die moderne Aera nichts aussagt.
+
+- **Die ausgehandelte Revision beider Aeren steht gemessen**
+  (`tests/test_protocol_version.py`): `mode="auto"` landet auf `2026-07-28`,
+  `mode="legacy"` auf `2025-11-25`.
+
+- **Frischehinweise auf allen cachebaren Verzeichnissen** (SEP-2549, Spec
   `2026-07-28`): `ttlMs` 300000, `cacheScope` `public`. Das SDK setzt beides von
   sich aus auf «sofort veraltet, nie geteilt» — wer nichts übergibt, verhält
   sich also nicht neutral, sondern lässt jeden Client bei jeder Verbindung neu
   auflisten, für eine Liste, die beim Import feststeht und für jeden Aufrufer
-  dieselbe ist. `prompts/list` und `resources/list` bleiben ungesetzt: dieser
-  Server registriert weder das eine noch das andere.
+  dieselbe ist.
+
+  `prompts/list`, `resources/list` und `resources/templates/list` blieben
+  zuerst ungesetzt, begründet damit, dieser Server registriere weder Prompts
+  noch Ressourcen. Das war aus der Registrierung geschlossen statt gemessen:
+  `MCPServer` registriert die Handler unbedingt, der Draht antwortet auf alle
+  drei mit `200` und einer leeren Liste. Die Fläche gibt es — sie ist bloss
+  leer und kann sich nicht füllen, womit das Argument für sie sogar stärker
+  gilt. `resources/read` und `prompts/get` bleiben ungehinweist: sie liefern
+  Inhalt, kein Verzeichnis.
 
 - **Protokoll-Gate: beide Spec-Aeren gepinnt und geprueft**
   (`tests/test_protocol_version.py`). `mcp` 2.x bedient zwei Aeren ueber
@@ -26,9 +98,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   aushandeln. Beide sind jetzt einzeln gepinnt, ein Dependabot-Bump von
   `mcp` kann keine davon still verschieben.
 
-  Ohne gemessenen Teil: dieser Server baut keine ASGI-App, durch die sich ein
-  `initialize` schicken liesse. Das Gate haengt deshalb an den SDK-Konstanten —
-  die schwaechere Form, im Docstring benannt statt verschwiegen.
+  Der gemessene Teil ist nachgeliefert (siehe unten); der Satz, dieser Server
+  baue keine ASGI-App, war eine Annahme und keine Messung. Die
+  Konstanten-Zusicherungen bleiben trotzdem: eine gemessene Verbindung sagt,
+  welche Revision *heute* ausgehandelt wurde — verschiebt ein SDK-Bump die
+  Obergrenze, misst sie stillschweigend die neue. Genau das faengt nur der
+  Konstanten-Pin ab.
 
   Beide READMEs beschreiben die Aeren; ein Test haelt jede Sprache einzeln
   dagegen — im Portfolio sind EN und DE desselben Repos schon dreimal

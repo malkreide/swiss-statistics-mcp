@@ -458,9 +458,38 @@ aus der jeweils anderen Aera wird abgewiesen.
 Beide Revisionen sind in
 [`tests/test_protocol_version.py`](tests/test_protocol_version.py) gepinnt und
 werden gegen das installierte SDK geprueft; ein Dependabot-Bump von `mcp` kann
-also keine der beiden still verschieben. Dieser Server baut keine ASGI-App, durch die sich ein `initialize`
-schicken liesse; das Gate sichert deshalb die SDK-Konstanten statt einer
-gemessenen Antwort — die schwaechere Form, benannt statt verschwiegen.
+also keine der beiden still verschieben. Dieselbe Datei liest die ausgehandelte
+Revision zusaetzlich an einer echten Verbindung ab, und
+[`tests/test_modern_wire.py`](tests/test_modern_wire.py) faehrt die ASGI-App aus
+`streamable_http_app()` ueber HTTP: `server/discover`, den
+`serverInfo`-Stempel, das ab `2026-07-28` verpflichtende `resultType`, den
+SEP-2549-Frischehinweis und die benannte Abweisung eines halben Envelopes.
+
+Beide Formen bleiben. Eine gemessene Verbindung sagt, welche Revision *heute*
+ausgehandelt wurde — verschiebt ein SDK-Bump die Obergrenze, misst sie
+stillschweigend die neue. Das faengt nur der Konstanten-Pin ab. Sie pruefen
+Verschiedenes; keine ersetzt die andere.
+
+### Server-Identitaet
+
+Die moderne Aera stempelt `serverInfo` in das `_meta` **jeder** Antwort, nicht
+einmal pro Verbindung, und das SDK setzt nichts nach: *«An unversioned server
+reports an empty `version`.»* Dieser Server deklariert deshalb `title`,
+`version`, `description` und `website_url` am Konstruktor — jede Antwort traegt
+damit dieselbe Identitaet, die auch [`server.json`](server.json) veroeffentlicht.
+
+`version`, `description` und `website_url` kommen aus den Paket-Metadaten statt
+aus Literalen: ein Literal waere hier eine dritte Fassung neben
+`pyproject.toml` und `server.json` — und die einzige, die niemand nachfuehrt,
+weil sie nirgends sichtbar ist. `title` bleibt ein Literal; ein Anzeigename ist
+keine Paket-Metadate.
+
+`icons` bleibt bewusst ungesetzt: dieses Repo hostet keine Icon-Assets, und eine
+URL zu erfinden, hinter der nichts liegt, waere schlechter als das Feld
+wegzulassen. Aus demselben Grund schlaegt ein fehlendes Feld ein leeres:
+`website_url` ist `str | None` **ohne** URL-Pruefung, und der Stempel wird mit
+`exclude_none` gedumpt — `None` laesst das Feld weg, `""` schickt
+`"websiteUrl": ""` an jeden Aufrufer.
 
 Zu beachten: `LATEST_PROTOCOL_VERSION` im SDK ist ein Alias auf die **moderne**
 Aera, nicht auf die Handshake-Aera — wer nur dagegen pinnt, laesst genau die

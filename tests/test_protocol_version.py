@@ -28,10 +28,20 @@ Nachgemessen statt aus Konstantennamen geschlossen: die Aushandlung steht in
 
 — sie haengt an keinem Transport, gilt also fuer stdio ebenso wie fuer HTTP.
 
-Ohne gemessenen Teil: dieses Repo baut keine ASGI-App, durch die sich ein
-`initialize` schicken liesse. Die Zusicherungen unten haengen deshalb an den
-SDK-Konstanten. Das ist die schwaechere Form, und sie steht hier benannt statt
-unausgesprochen.
+Der gemessene Teil ist nachgeliefert. Der Satz, der hier stand — dieses Repo
+baue keine ASGI-App, durch die sich eine Anfrage schicken liesse, die
+Zusicherungen haengen deshalb an den SDK-Konstanten — war eine Annahme, keine
+Messung: `MCPServer.streamable_http_app()` gibt die App her, und
+`tests/test_modern_wire.py` faehrt sie. Unten steht zusaetzlich die
+ausgehandelte Revision beider Aeren, an einer echten Verbindung abgelesen statt
+aus Konstantennamen geschlossen.
+
+Die Konstanten-Zusicherungen bleiben trotzdem stehen, und zwar nicht aus
+Bequemlichkeit: eine gemessene Verbindung sagt, welche Revision *heute*
+ausgehandelt wurde. Sie kann nicht sagen, dass ein SDK-Bump die Obergrenze
+verschoben hat, denn sie wuerde dann stillschweigend die neue messen. Genau das
+faengt der Konstanten-Pin ab. Die beiden Formen pruefen Verschiedenes; keine
+ersetzt die andere.
 """
 
 from __future__ import annotations
@@ -39,11 +49,14 @@ from __future__ import annotations
 import pathlib
 import re
 
+from mcp import Client
 from mcp.types.version import (
     LATEST_HANDSHAKE_VERSION,
     LATEST_MODERN_VERSION,
     LATEST_PROTOCOL_VERSION,
 )
+
+from swiss_statistics_mcp.server import mcp
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
 
@@ -122,3 +135,25 @@ def test_beide_readmes_nennen_dieselben_beiden_revisionen() -> None:
         body = parts[1][:2500]
         for value in (DOCUMENTED_HANDSHAKE_VERSION, DOCUMENTED_MODERN_VERSION):
             assert value in body, f"{name} nennt {value} nicht im Abschnitt «{anchor}»"
+
+
+async def test_eine_echte_verbindung_landet_auf_der_modernen_aera() -> None:
+    """Gemessen statt geschlossen: `mode="auto"` probt `server/discover`.
+
+    Das ist die Zusicherung, die der Konstanten-Pin nicht geben kann — er sagt,
+    was das SDK *koennte*, nicht, worauf dieser Server eine Verbindung
+    tatsaechlich fuehrt.
+    """
+    async with Client(mcp) as client:
+        assert client.protocol_version == DOCUMENTED_MODERN_VERSION
+
+
+async def test_eine_legacy_verbindung_landet_auf_der_handshake_aera() -> None:
+    """Die Aera, die heutige Clients sprechen — ebenfalls abgelesen.
+
+    Zusammen mit dem Test darueber steht damit gemessen, was die Tabelle in
+    beiden READMEs behauptet: derselbe Server, zwei Aeren, die erste Anfrage
+    entscheidet.
+    """
+    async with Client(mcp, mode="legacy") as client:
+        assert client.protocol_version == DOCUMENTED_HANDSHAKE_VERSION
