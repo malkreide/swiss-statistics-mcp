@@ -50,6 +50,14 @@ from . import __description__, __homepage__, __version__
 
 BFS_API_BASE = "https://www.pxweb.bfs.admin.ch/api/v1"
 DEFAULT_LANGUAGE = "de"
+# Per-operation httpx timeout, deliberately ABOVE the total budget below. The
+# budget is what bounds the call; this only catches a connection that hangs.
+# Lowering it to make room for a second attempt looks like the fix for a slow
+# cold query and is not one. Measured against STAT-TAB on 23.9.2026: a cold
+# query takes 14-26s and a warm one about 1s, but the cache does not reliably
+# fill behind an aborted request — aborted at 5s, the next attempt took 26.4s;
+# aborted at 15s and repeated after 15s, it took 1.0s. A short per-attempt
+# timeout would turn a slow success into a certain failure.
 HTTP_TIMEOUT = 30.0
 CATALOG_CACHE_TTL = 3600  # 1 hour
 METADATA_CACHE_TTL = 3600  # 1 hour
@@ -396,6 +404,38 @@ async def _retrying_http(coro_factory: Callable[[], Any]) -> Any:
                     return await coro_factory()
     except RetryError as e:  # pragma: no cover — reraise=True usually raises the wrapped exc
         raise e.last_attempt.exception() from e
+
+
+# What the budget in `_retrying_http` raises (the builtin `TimeoutError` from
+# `asyncio.timeout`), plus httpx's own for the paths that open a client directly.
+SOURCE_TIMEOUT_ERRORS = (TimeoutError, httpx.TimeoutException)
+
+# STAT-TAB computes a large query afresh when it is not cached (see HTTP_TIMEOUT).
+_PXWEB_COLD_NOTE = (
+    " STAT-TAB rechnet eine Abfrage, die nicht im Cache liegt, frisch — gemessen"
+    " 14 bis 26 Sekunden, danach rund eine Sekunde."
+)
+
+
+def _source_timeout(source: str, detail: str = "") -> dict[str, str]:
+    """`error`/`hint` for a call that ran out of `RETRY_TOTAL_BUDGET`.
+
+    A timeout is not an internal error. Reported as one, it reads to the model
+    like a defect in this server and gives it no reason to try again — which
+    is what worked in the measurements behind `HTTP_TIMEOUT`. It says nothing
+    about the request either way, so the hint does not claim it was valid.
+    """
+    return {
+        "error": (
+            f"Zeitüberschreitung: {source} hat nicht innerhalb von "
+            f"{RETRY_TOTAL_BUDGET:.0f} Sekunden geantwortet."
+        ),
+        "hint": (
+            "Die Quelle hat nicht rechtzeitig geantwortet; über die Anfrage selbst sagt"
+            " das nichts." + detail + " Ein erneuter Aufruf kann gelingen, eine engere"
+            " Auswahl kann die Antwortzeit verkürzen."
+        ),
+    }
 
 
 async def _get(url: str) -> Any:
@@ -1587,6 +1627,11 @@ async def bfs_browse_catalog(params: BrowseCatalogInput) -> BrowseCatalogResult:
             error=f"API-Fehler {e.response.status_code}",
             hint="BFS STAT-TAB API nicht erreichbar. Bitte später nochmals versuchen.",
         )
+    except SOURCE_TIMEOUT_ERRORS:
+        _LOGGER.warning("bfs_browse_catalog timed out", exc_info=True)
+        return BrowseCatalogResult(
+            **_source_timeout("BFS STAT-TAB", _PXWEB_COLD_NOTE),
+        )
     except Exception:
         _LOGGER.exception("bfs_browse_catalog failed")
         return BrowseCatalogResult(
@@ -1671,6 +1716,11 @@ async def bfs_search_tables(params: SearchTablesInput) -> SearchTablesResult:
         )
     except httpx.HTTPStatusError as e:
         return SearchTablesResult(error=f"API-Fehler {e.response.status_code}")
+    except SOURCE_TIMEOUT_ERRORS:
+        _LOGGER.warning("bfs_search_tables timed out", exc_info=True)
+        return SearchTablesResult(
+            **_source_timeout("BFS STAT-TAB", _PXWEB_COLD_NOTE),
+        )
     except Exception:
         _LOGGER.exception("bfs_search_tables failed")
         return SearchTablesResult(
@@ -1774,6 +1824,11 @@ async def bfs_get_table_metadata(params: GetTableMetadataInput) -> TableMetadata
                 hint="Verwende bfs_search_tables oder bfs_browse_catalog um gültige IDs zu finden.",
             )
         return TableMetadataResult(error=f"API-Fehler {e.response.status_code}")
+    except SOURCE_TIMEOUT_ERRORS:
+        _LOGGER.warning("bfs_get_table_metadata timed out", exc_info=True)
+        return TableMetadataResult(
+            **_source_timeout("BFS STAT-TAB", _PXWEB_COLD_NOTE),
+        )
     except Exception:
         _LOGGER.exception("bfs_get_table_metadata failed")
         return TableMetadataResult(
@@ -1867,6 +1922,11 @@ async def bfs_get_data(params: GetDataInput) -> DataTableResult:
             )
         return DataTableResult(
             error=f"API-Fehler {e.response.status_code}: {e.response.text[:200]}"
+        )
+    except SOURCE_TIMEOUT_ERRORS:
+        _LOGGER.warning("bfs_get_data timed out", exc_info=True)
+        return DataTableResult(
+            **_source_timeout("BFS STAT-TAB", _PXWEB_COLD_NOTE),
         )
     except Exception:
         _LOGGER.exception("bfs_get_data failed")
@@ -2049,6 +2109,11 @@ async def bfs_education_stats(params: GetEducationStatsInput) -> DataTableResult
             error=f"API-Fehler {e.response.status_code}",
             hint="Tabelle möglicherweise aktuell nicht verfügbar. Bitte später nochmals versuchen.",
         )
+    except SOURCE_TIMEOUT_ERRORS:
+        _LOGGER.warning("bfs_education_stats timed out", exc_info=True)
+        return DataTableResult(
+            **_source_timeout("BFS STAT-TAB", _PXWEB_COLD_NOTE),
+        )
     except Exception:
         _LOGGER.exception("bfs_education_stats failed")
         return DataTableResult(
@@ -2171,6 +2236,11 @@ async def bfs_population(params: GetPopulationInput) -> DataTableResult:
 
     except httpx.HTTPStatusError as e:
         return DataTableResult(error=f"API-Fehler {e.response.status_code}")
+    except SOURCE_TIMEOUT_ERRORS:
+        _LOGGER.warning("bfs_population timed out", exc_info=True)
+        return DataTableResult(
+            **_source_timeout("BFS STAT-TAB", _PXWEB_COLD_NOTE),
+        )
     except Exception:
         _LOGGER.exception("bfs_population failed")
         return DataTableResult(
@@ -2276,6 +2346,11 @@ async def bfs_compare_cantons(params: CompareCantonsInput) -> DataTableResult:
                 hint="Verwende bfs_get_table_metadata um gültige Werte-Codes zu erhalten.",
             )
         return DataTableResult(error=f"API-Fehler {e.response.status_code}")
+    except SOURCE_TIMEOUT_ERRORS:
+        _LOGGER.warning("bfs_compare_cantons timed out", exc_info=True)
+        return DataTableResult(
+            **_source_timeout("BFS STAT-TAB", _PXWEB_COLD_NOTE),
+        )
     except Exception:
         _LOGGER.exception("bfs_compare_cantons failed")
         return DataTableResult(
@@ -2439,6 +2514,11 @@ async def lookup_commune(params: LookupCommuneInput) -> LookupCommuneResult:
             error=f"AGVCH-API-Fehler {e.response.status_code}",
             hint="Datum im Format YYYY-MM-DD prüfen. Quelle evtl. kurz nicht erreichbar.",
         )
+    except SOURCE_TIMEOUT_ERRORS:
+        _LOGGER.warning("lookup_commune timed out", exc_info=True)
+        return LookupCommuneResult(
+            **_source_timeout("Das Gemeindeverzeichnis (AGVCH)"),
+        )
     except Exception:
         _LOGGER.exception("lookup_commune failed")
         return LookupCommuneResult(
@@ -2567,6 +2647,11 @@ async def resolve_historical_commune(
             error=f"AGVCH-API-Fehler {e.response.status_code}",
             hint="Datumsangaben (YYYY-MM-DD) prüfen. Quelle evtl. kurz nicht erreichbar.",
         )
+    except SOURCE_TIMEOUT_ERRORS:
+        _LOGGER.warning("resolve_historical_commune timed out", exc_info=True)
+        return ResolveHistoricalCommuneResult(
+            **_source_timeout("Das Gemeindeverzeichnis (AGVCH)"),
+        )
     except Exception:
         _LOGGER.exception("resolve_historical_commune failed")
         return ResolveHistoricalCommuneResult(
@@ -2650,6 +2735,11 @@ async def list_communes(params: ListCommunesInput) -> ListCommunesResult:
         return ListCommunesResult(
             error=f"AGVCH-API-Fehler {e.response.status_code}",
             hint="Datum (YYYY-MM-DD) prüfen. Quelle evtl. kurz nicht erreichbar.",
+        )
+    except SOURCE_TIMEOUT_ERRORS:
+        _LOGGER.warning("list_communes timed out", exc_info=True)
+        return ListCommunesResult(
+            **_source_timeout("Das Gemeindeverzeichnis (AGVCH)"),
         )
     except Exception:
         _LOGGER.exception("list_communes failed")
@@ -3137,6 +3227,11 @@ async def bfs_construction_activity(
                 hint="BFS-Nummer prüfen; STAT-TAB hat die Auswahl abgelehnt.",
             )
         return ConstructionActivityResult(error=f"API-Fehler {e.response.status_code}")
+    except SOURCE_TIMEOUT_ERRORS:
+        _LOGGER.warning("bfs_construction_activity timed out", exc_info=True)
+        return ConstructionActivityResult(
+            **_source_timeout("BFS STAT-TAB", _PXWEB_COLD_NOTE),
+        )
     except Exception:
         _LOGGER.exception("bfs_construction_activity failed")
         return ConstructionActivityResult(
@@ -3265,6 +3360,11 @@ async def bfs_construction_investment(
                 hint="level/code-Kombination prüfen; STAT-TAB hat die Auswahl abgelehnt.",
             )
         return ConstructionInvestmentResult(error=f"API-Fehler {e.response.status_code}")
+    except SOURCE_TIMEOUT_ERRORS:
+        _LOGGER.warning("bfs_construction_investment timed out", exc_info=True)
+        return ConstructionInvestmentResult(
+            **_source_timeout("BFS STAT-TAB", _PXWEB_COLD_NOTE),
+        )
     except Exception:
         _LOGGER.exception("bfs_construction_investment failed")
         return ConstructionInvestmentResult(
@@ -3613,6 +3713,12 @@ async def bfs_price_index(params: PriceIndexInput) -> PriceIndexResult:
             index=params.index,
             error=f"API-Fehler {e.response.status_code}",
             hint="opendata.swiss / BFS DAM evtl. kurz nicht erreichbar.",
+        )
+    except SOURCE_TIMEOUT_ERRORS:
+        _LOGGER.warning("bfs_price_index timed out", exc_info=True)
+        return PriceIndexResult(
+            index=params.index,
+            **_source_timeout("opendata.swiss / BFS DAM"),
         )
     except Exception:
         _LOGGER.exception("bfs_price_index failed")

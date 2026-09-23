@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Behoben
+
+- **Eine Zeitüberschreitung heisst jetzt Zeitüberschreitung, nicht «Interner
+  Fehler».** Live-Lauf vom 21.9.2026: `bfs_population` brauchte für eine kalte
+  STAT-TAB-Abfrage länger als `RETRY_TOTAL_BUDGET` (25 s) und meldete «Interner
+  Fehler beim Abruf der Bevölkerungsdaten». Die Quelle war nicht kaputt: Dieselbe
+  Abfrage dauerte am 23.9. kalt 21,3 s, warm 0,9 s, Wert unverändert (1'620'020).
+  Für das Modell klang die Meldung nach einem Defekt dieses Servers, und sie gab
+  ihm keinen Grund, es erneut zu versuchen — das, was hier meist hilft.
+
+  13 Tools fangen den Budget-`TimeoutError` und `httpx.TimeoutException` nun
+  eigens ab und nennen die Quelle (STAT-TAB, AGVCH, opendata.swiss) samt Budget.
+  Die Cache-Erklärung steht nur bei STAT-TAB, wo sie gemessen ist.
+  `search_historical_series` fehlt mit Absicht: Sein Index schluckt jeden
+  Kapitelfehler vorher und meldet schon «HSSO-Katalog aktuell nicht erreichbar».
+
+  **Was bewusst nicht geändert wurde:** `HTTP_TIMEOUT` pro Versuch senken, damit
+  ein zweiter Versuch ins Budget passt. Gemessen wärmt ein abgebrochener Aufruf
+  den Cache nicht verlässlich: nach 5 s abgebrochen, brauchte der nächste 26,4 s;
+  nach 15 s abgebrochen und 15 s später wiederholt, 1,0 s. Ein kurzer Timeout
+  hätte einen langsamen Erfolg in einen sicheren Fehlschlag verwandelt. Die
+  Messung steht als Kommentar bei `HTTP_TIMEOUT`.
+
 ### Hinzugefuegt
 
 - **`serverInfo`-Identitaet auf dem Draht** (Spec `2026-07-28`, #3002).
