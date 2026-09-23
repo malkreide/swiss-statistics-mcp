@@ -51,7 +51,7 @@ dev = [
     # `dev`-Extra mit und hat keinen eigenen Pin-Schritt mehr. Beim Anheben:
     # Version aendern, `ruff format` einmal ueber die gelinteten Pfade laufen
     # lassen und das Ergebnis mit committen.
-    "ruff==0.16.4",
+    "ruff==0.16.5",
     "bandit>=1.7.0",
     "pip-audit>=2.7.0",
 ]
