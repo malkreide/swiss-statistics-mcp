@@ -7,30 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Behoben
+## [0.8.0] - 2026-09-26
 
-- **Eine Zeitüberschreitung heisst jetzt Zeitüberschreitung, nicht «Interner
-  Fehler».** Live-Lauf vom 21.9.2026: `bfs_population` brauchte für eine kalte
-  STAT-TAB-Abfrage länger als `RETRY_TOTAL_BUDGET` (25 s) und meldete «Interner
-  Fehler beim Abruf der Bevölkerungsdaten». Die Quelle war nicht kaputt: Dieselbe
-  Abfrage dauerte am 23.9. kalt 21,3 s, warm 0,9 s, Wert unverändert (1'620'020).
-  Für das Modell klang die Meldung nach einem Defekt dieses Servers, und sie gab
-  ihm keinen Grund, es erneut zu versuchen — das, was hier meist hilft.
+### Added
 
-  13 Tools fangen den Budget-`TimeoutError` und `httpx.TimeoutException` nun
-  eigens ab und nennen die Quelle (STAT-TAB, AGVCH, opendata.swiss) samt Budget.
-  Die Cache-Erklärung steht nur bei STAT-TAB, wo sie gemessen ist.
-  `search_historical_series` fehlt mit Absicht: Sein Index schluckt jeden
-  Kapitelfehler vorher und meldet schon «HSSO-Katalog aktuell nicht erreichbar».
-
-  **Was bewusst nicht geändert wurde:** `HTTP_TIMEOUT` pro Versuch senken, damit
-  ein zweiter Versuch ins Budget passt. Gemessen wärmt ein abgebrochener Aufruf
-  den Cache nicht verlässlich: nach 5 s abgebrochen, brauchte der nächste 26,4 s;
-  nach 15 s abgebrochen und 15 s später wiederholt, 1,0 s. Ein kurzer Timeout
-  hätte einen langsamen Erfolg in einen sicheren Fehlschlag verwandelt. Die
-  Messung steht als Kommentar bei `HTTP_TIMEOUT`.
-
-### Hinzugefuegt
 
 - **`serverInfo`-Identitaet auf dem Draht** (Spec `2026-07-28`, #3002).
   `MCPServer` bekommt `title`, `version`, `description` und `website_url`.
@@ -132,7 +112,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dagegen — im Portfolio sind EN und DE desselben Repos schon dreimal
   auseinandergelaufen, weil nur eine Fassung nachgezogen wurde.
 
-### Hinzugefuegt — die Fixtures sind aufgezeichnet, nicht mehr ausgedacht
+
+- **`tests/test_retry_policy.py`** — the retry path had no tests of its own.
+  The properties that were already correct are pinned alongside the new ones,
+  so a later edit cannot lose them quietly. Counter-checks were run against all
+  six properties; see the pull request.
+
+**Die Fixtures sind aufgezeichnet, nicht mehr ausgedacht.**
+
 
 **`scripts/record_fixtures.py`** zeichnet von allen vier Quellen auf — AGVCH,
 CKAN (`opendata.swiss`), HSSO und PXWeb — und schreibt `tests/fixtures/*` samt
@@ -187,8 +174,8 @@ nicht Gegenstand dieses PRs und steht hier, damit er nicht als neu gilt.
 Der Rahmen dazu steht im Skill [`mcp-data-fidelity`](https://github.com/malkreide/mcp-data-fidelity-skill)
 unter Regel 5 und im Katalog-Check `OPS-009`.
 
-
 ### Changed
+
 
 - **Retry policy against the upstream: spread, obedient and time-bounded
   (`ARCH-014`).** A portfolio run of the audit catalogue on 2026-08-07 read
@@ -224,12 +211,29 @@ unter Regel 5 und im Katalog-Check `OPS-009`.
   value bound at import would ignore them and put real sleeps back into the
   suite. A test pins that.
 
-### Added
+### Fixed
 
-- **`tests/test_retry_policy.py`** — the retry path had no tests of its own.
-  The properties that were already correct are pinned alongside the new ones,
-  so a later edit cannot lose them quietly. Counter-checks were run against all
-  six properties; see the pull request.
+
+- **Eine Zeitüberschreitung heisst jetzt Zeitüberschreitung, nicht «Interner
+  Fehler».** Live-Lauf vom 21.9.2026: `bfs_population` brauchte für eine kalte
+  STAT-TAB-Abfrage länger als `RETRY_TOTAL_BUDGET` (25 s) und meldete «Interner
+  Fehler beim Abruf der Bevölkerungsdaten». Die Quelle war nicht kaputt: Dieselbe
+  Abfrage dauerte am 23.9. kalt 21,3 s, warm 0,9 s, Wert unverändert (1'620'020).
+  Für das Modell klang die Meldung nach einem Defekt dieses Servers, und sie gab
+  ihm keinen Grund, es erneut zu versuchen — das, was hier meist hilft.
+
+  13 Tools fangen den Budget-`TimeoutError` und `httpx.TimeoutException` nun
+  eigens ab und nennen die Quelle (STAT-TAB, AGVCH, opendata.swiss) samt Budget.
+  Die Cache-Erklärung steht nur bei STAT-TAB, wo sie gemessen ist.
+  `search_historical_series` fehlt mit Absicht: Sein Index schluckt jeden
+  Kapitelfehler vorher und meldet schon «HSSO-Katalog aktuell nicht erreichbar».
+
+  **Was bewusst nicht geändert wurde:** `HTTP_TIMEOUT` pro Versuch senken, damit
+  ein zweiter Versuch ins Budget passt. Gemessen wärmt ein abgebrochener Aufruf
+  den Cache nicht verlässlich: nach 5 s abgebrochen, brauchte der nächste 26,4 s;
+  nach 15 s abgebrochen und 15 s später wiederholt, 1,0 s. Ein kurzer Timeout
+  hätte einen langsamen Erfolg in einen sicheren Fehlschlag verwandelt. Die
+  Messung steht als Kommentar bei `HTTP_TIMEOUT`.
 
 ## [0.7.2] - 2026-08-03
 
