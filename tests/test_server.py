@@ -29,27 +29,35 @@ def _clear_caches():
     """Clear module-level caches between tests so cache state from one test
     cannot mask a mock in the next."""
     from swiss_statistics_mcp.server import (
+        _abandoned,
         _catalog_cache,
+        _detached_results,
         _hsso_index_cache,
+        _inflight,
         _metadata_cache,
         _metadata_timestamps,
         _price_index_cache,
         _snapshot_cache,
     )
 
-    _catalog_cache.clear()
-    _metadata_cache.clear()
-    _metadata_timestamps.clear()
-    _snapshot_cache.clear()
-    _hsso_index_cache.clear()
-    _price_index_cache.clear()
+    # `_inflight`/`_detached_results` too: a query left running or uncollected
+    # by one test would answer the next one's identical query from memory.
+    caches = (
+        _catalog_cache,
+        _metadata_cache,
+        _metadata_timestamps,
+        _snapshot_cache,
+        _hsso_index_cache,
+        _price_index_cache,
+        _inflight,
+        _detached_results,
+        _abandoned,
+    )
+    for cache in caches:
+        cache.clear()
     yield
-    _catalog_cache.clear()
-    _metadata_cache.clear()
-    _metadata_timestamps.clear()
-    _snapshot_cache.clear()
-    _hsso_index_cache.clear()
-    _price_index_cache.clear()
+    for cache in caches:
+        cache.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -2116,13 +2124,19 @@ class TestLiveAPI:
 
     @pytest.mark.asyncio
     async def test_live_population_zurich(self):
+        from live_client import call_as_client
+
         from swiss_statistics_mcp.server import GetPopulationInput, bfs_population
 
-        result = await bfs_population(
-            GetPopulationInput(region="Zürich", year="2024", breakdown="total")
+        # This table is the slow one: cold, the query took 36.1s and more than
+        # 52s on 14.10.2026, past the budget. `call_as_client` comes back as the
+        # hint says, bounded; see live_client.py for why that and nothing wider.
+        data = await call_as_client(
+            lambda: bfs_population(
+                GetPopulationInput(region="Zürich", year="2024", breakdown="total")
+            )
         )
-        data = result.model_dump(exclude_none=True)
-        assert "rows" in data
+        assert "rows" in data, data
         assert len(data["rows"]) > 0
 
     @pytest.mark.asyncio

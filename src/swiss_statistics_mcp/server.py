@@ -53,11 +53,13 @@ DEFAULT_LANGUAGE = "de"
 # Per-operation httpx timeout, deliberately ABOVE the total budget below. The
 # budget is what bounds the call; this only catches a connection that hangs.
 # Lowering it to make room for a second attempt looks like the fix for a slow
-# cold query and is not one. Measured against STAT-TAB on 23.9.2026: a cold
-# query takes 14-26s and a warm one about 1s, but the cache does not reliably
-# fill behind an aborted request — aborted at 5s, the next attempt took 26.4s;
-# aborted at 15s and repeated after 15s, it took 1.0s. A short per-attempt
-# timeout would turn a slow success into a certain failure.
+# cold query and is not one. Measured against STAT-TAB on 23.9. and 14.10.2026:
+# a cold query takes 14-36s, a warm one about 1s. An aborted query appears to
+# be finished by the source anyway, and a repeat is fast once it is done — but
+# not before: aborted at 5s, the repeat 1s later took 26.4s; aborted at 15s and
+# repeated after 15s, 1.0s; aborted at 25.6s and repeated after 2s, 1.0s. A
+# second attempt inside the same call waits for the same computation, so it buys
+# nothing. What helps is the caller's next call, and the timeout hint says so.
 HTTP_TIMEOUT = 30.0
 CATALOG_CACHE_TTL = 3600  # 1 hour
 METADATA_CACHE_TTL = 3600  # 1 hour
@@ -378,22 +380,23 @@ def _retry_wait(retry_state: Any) -> float:
     )
 
 
-async def _retrying_http(coro_factory: Callable[[], Any]) -> Any:
+async def _retrying_http(coro_factory: Callable[[], Any], budget: float | None = None) -> Any:
     """Run `coro_factory()` with retry on transient errors.
 
     `coro_factory` is a zero-arg callable returning a coroutine; we call it
     fresh on each retry so a new `AsyncClient` is opened per attempt
     (httpx clients are not safe to reuse after errors).
 
-    The whole call is bounded by :data:`RETRY_TOTAL_BUDGET` seconds of wall
-    clock. `HTTP_TIMEOUT` is *not* a budget: httpx bounds each operation and
-    its read timeout restarts with every chunk, so a slowly trickling response
+    The whole call is bounded by ``budget`` seconds of wall clock, by default
+    :data:`RETRY_TOTAL_BUDGET` (read at call time, so tests can lower it).
+    `HTTP_TIMEOUT` is *not* a budget: httpx bounds each operation and its read
+    timeout restarts with every chunk, so a slowly trickling response
     outlives any ceiling without a single read expiring. `stop_after_delay`
     would not do it either — it declines to start a *new* attempt but cannot
     cut one already running.
     """
     try:
-        async with asyncio.timeout(RETRY_TOTAL_BUDGET):
+        async with asyncio.timeout(RETRY_TOTAL_BUDGET if budget is None else budget):
             async for attempt in AsyncRetrying(
                 stop=stop_after_attempt(RETRY_MAX_ATTEMPTS),
                 wait=_retry_wait,
@@ -413,7 +416,8 @@ SOURCE_TIMEOUT_ERRORS = (TimeoutError, httpx.TimeoutException)
 # STAT-TAB computes a large query afresh when it is not cached (see HTTP_TIMEOUT).
 _PXWEB_COLD_NOTE = (
     " STAT-TAB rechnet eine Abfrage, die nicht im Cache liegt, frisch — gemessen"
-    " 14 bis 26 Sekunden, danach rund eine Sekunde."
+    " 14 bis 36 Sekunden, danach rund eine Sekunde. Eine abgebrochene Abfrage"
+    " rechnet STAT-TAB offenbar fertig; ein erneuter Aufruf ist dann meist schnell."
 )
 
 
@@ -432,8 +436,7 @@ def _source_timeout(source: str, detail: str = "") -> dict[str, str]:
         ),
         "hint": (
             "Die Quelle hat nicht rechtzeitig geantwortet; über die Anfrage selbst sagt"
-            " das nichts." + detail + " Ein erneuter Aufruf kann gelingen, eine engere"
-            " Auswahl kann die Antwortzeit verkürzen."
+            " das nichts." + detail + " Ein erneuter Aufruf kann gelingen."
         ),
     }
 
@@ -450,16 +453,96 @@ async def _get(url: str) -> Any:
     return await _retrying_http(_do)
 
 
+# A STAT-TAB query that outlives the caller's budget keeps running (DETACHED).
+#
+# Measured on 14.10.2026: the same cold query took 36.1s once and more than 52s
+# in the live suite an hour later — past `RETRY_TOTAL_BUDGET` and past the 30s
+# the client allows, whatever we set. STAT-TAB finishes an aborted query anyway
+# (see HTTP_TIMEOUT), so cutting our side frees nothing there; it only throws
+# away the answer the timeout hint tells the caller to come back for.
+#
+# So the request runs as a task. The caller waits for it at most its budget and
+# then gets the usual timeout; the task carries on, bounded by DETACHED_BUDGET,
+# and the next identical call joins it or collects its result. This is the one
+# case ARCH-014's warning — «the work continues and the result goes nowhere» —
+# does not describe: the result is kept for exactly the call the hint asks for.
+#
+# Freshness is unchanged. A result that reached its caller is not kept; only
+# one nobody collected is, and for DETACHED_RESULT_TTL at most. Identical calls
+# made while a query is in flight share it, instead of each starting their own.
+DETACHED_BUDGET = float(os.environ.get("MCP_DETACHED_BUDGET", "120.0"))
+DETACHED_RESULT_TTL = 600.0  # an uncollected result, not a cache of answers
+DETACHED_MAX_RESULTS = 32
+
+_inflight: dict[str, asyncio.Task[Any]] = {}
+_detached_results: dict[str, tuple[float, Any]] = {}
+_abandoned: set[str] = set()  # keys whose last caller stopped waiting
+
+
+def _query_key(url: str, body: dict[str, Any]) -> str:
+    return url + "\n" + json.dumps(body, sort_keys=True, ensure_ascii=False)
+
+
+async def _post_once(url: str, body: dict[str, Any]) -> Any:
+    """One POST attempt. Its own timeout is the detached budget: a cold query
+    sends no byte until it is computed, so `HTTP_TIMEOUT` would cut it again."""
+    async with httpx.AsyncClient(timeout=DETACHED_BUDGET) as client:
+        resp = await client.post(url, json=body)
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def _post_detached(url: str, body: dict[str, Any], key: str) -> Any:
+    try:
+        data = await _retrying_http(lambda: _post_once(url, body), budget=DETACHED_BUDGET)
+    finally:
+        _inflight.pop(key, None)
+    now = time.monotonic()
+    _detached_results[key] = (now, data)
+    for k in [k for k, (t, _) in _detached_results.items() if now - t >= DETACHED_RESULT_TTL]:
+        del _detached_results[k]
+    while len(_detached_results) > DETACHED_MAX_RESULTS:
+        del _detached_results[next(iter(_detached_results))]  # oldest first
+    return data
+
+
+def _note_detached_end(key: str, task: asyncio.Task[Any]) -> None:
+    # Retrieving the exception here keeps a failure nobody awaited from ending
+    # as «Task exception was never retrieved»; the next call simply starts anew.
+    # Logged only when nobody was waiting: a caller who was gets it raised, and
+    # the tool reports it — a second, louder line for an ordinary 400 is noise.
+    abandoned = key in _abandoned
+    _abandoned.discard(key)
+    exc = None if task.cancelled() else task.exception()
+    if exc is not None and abandoned:
+        _LOGGER.warning("detached STAT-TAB query failed", exc_info=exc)
+
+
 async def _post(url: str, body: dict[str, Any]) -> Any:
-    """Perform a POST request and return parsed JSON, with retry on transient errors."""
+    """POST a STAT-TAB query and return parsed JSON, within `RETRY_TOTAL_BUDGET`.
 
-    async def _do() -> Any:
-        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-            resp = await client.post(url, json=body)
-            resp.raise_for_status()
-            return resp.json()
-
-    return await _retrying_http(_do)
+    Past the budget the caller gets `TimeoutError` while the query carries on
+    in the background (see DETACHED_BUDGET); the next identical call picks up
+    its result.
+    """
+    key = _query_key(url, body)
+    kept = _detached_results.pop(key, None)
+    if kept is not None and time.monotonic() - kept[0] < DETACHED_RESULT_TTL:
+        return kept[1]
+    task = _inflight.get(key)
+    if task is None:
+        task = asyncio.create_task(_post_detached(url, body, key))
+        task.add_done_callback(functools.partial(_note_detached_end, key))
+        _inflight[key] = task
+    _abandoned.discard(key)  # someone is waiting again
+    try:
+        async with asyncio.timeout(RETRY_TOTAL_BUDGET):
+            data = await asyncio.shield(task)
+    except (TimeoutError, asyncio.CancelledError):
+        _abandoned.add(key)  # budget spent, or the client cancelled the call
+        raise
+    _detached_results.pop(key, None)  # delivered: nothing left to collect
+    return data
 
 
 async def _get_text(url: str) -> str:
