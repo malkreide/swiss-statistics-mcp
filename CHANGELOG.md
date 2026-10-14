@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Geändert
+
+- **Eine STAT-TAB-Abfrage, die das Budget überschreitet, läuft weiter, und der
+  nächste Aufruf holt ihr Ergebnis ab.** Die Live-Läufe vom 21.9., 28.9. und
+  12.10.2026 wurden alle drei rot, immer an `test_live_population_zurich`, immer
+  mit «Zeitüberschreitung». Der Vertrag mit der Quelle hielt jedes Mal. Gemessen
+  am 14.10.: Dieselbe kalte Abfrage dauerte einmal 36,1 s und eine Stunde später
+  in der Live-Suite mehr als 52 s; warm dauert sie rund 1 s. Kein Budget, das ein
+  Client mit 30 s Grenze erlaubt, deckt das ab.
+
+  STAT-TAB rechnet eine abgebrochene Abfrage ohnehin fertig. Unser Abbruch hat
+  dort also nichts gespart, er hat nur die Antwort weggeworfen, für die der
+  Hinweis «Ein erneuter Aufruf kann gelingen» den Aufrufer zurückschickt. `_post`
+  startet die Abfrage deshalb als Task. Der Aufrufer wartet höchstens
+  `RETRY_TOTAL_BUDGET` und bekommt dann wie bisher die Zeitüberschreitung; die
+  Abfrage läuft weiter, begrenzt durch `MCP_DETACHED_BUDGET` (Vorgabe 120 s).
+  Der nächste gleiche Aufruf hängt sich an oder holt das Ergebnis ab.
+  Gleichzeitige gleiche Aufrufe teilen sich eine Anfrage.
+  Gegen die echte Quelle belegt (Budget zur Demonstration auf 1 s gesenkt):
+  Fünf Aufrufe, eine einzige BFS-Anfrage, Daten beim fünften.
+
+  An der Aktualität ändert sich nichts. Ein Ergebnis, das seinen Aufrufer erreicht
+  hat, wird nicht aufbewahrt. Aufbewahrt wird nur eines, das niemand abgeholt hat,
+  höchstens 10 Minuten und höchstens 32 Stück.
+
+- **Der Live-Test kommt zurück, wie der Hinweis es sagt.** `tests/live_client.py`
+  wiederholt nur nach einer Zeitüberschreitung, und nur so oft, dass die
+  Wiederholungen zusammen `DETACHED_BUDGET` abdecken. Danach hat auch der Server
+  aufgegeben, und eine Zeitüberschreitung ist ein echter Befund. Jeder andere
+  Fehler bleibt sofort rot. Die Wiederholungen erscheinen als Warnung im Log: Die
+  Antwortzeit wird beobachtet, der Vertrag wird geprüft. Das Budget der Suite zu
+  erhöhen hätte eine Konfiguration geprüft, die kein Client fährt.
+
+### Behoben
+
+- **Der Zeitüberschreitungs-Hinweis versprach, was nicht gemessen war.** «Eine
+  engere Auswahl kann die Antwortzeit verkürzen» ist weg: Die Abfrage aus dem
+  Live-Test liefert einen einzigen Wert und brauchte trotzdem 36 s. Die gemessene
+  Spanne heisst jetzt 14 bis 36 Sekunden statt 14 bis 26.
+- **Korrektur zu 0.8.0:** Dort stand, ein abgebrochener Aufruf wärme den Cache
+  nicht verlässlich. Die Messreihe vom 14.10. deutet es anders: STAT-TAB rechnet
+  weiter, und ein erneuter Aufruf, der zu früh kommt, wartet auf dieselbe
+  Rechnung (Abbruch nach 5 s, erneuter Aufruf 26,4 s; Abbruch nach 25,6 s,
+  erneuter Aufruf 2 s später 1,0 s). Die Folgerung bleibt richtig, die Begründung
+  war falsch: Ein zweiter Versuch innerhalb desselben Aufrufs bringt nichts.
+
 ## [0.8.0] - 2026-09-26
 
 ### Added

@@ -8,7 +8,9 @@ took 21.3s cold and 0.9s warm — nothing internal had failed. The model reads
 way.
 
 Why the per-attempt timeout was NOT lowered is recorded next to
-`HTTP_TIMEOUT`: an aborted request does not reliably warm the source's cache.
+`HTTP_TIMEOUT`: a second attempt inside the same call waits for the same cold
+computation. What the timeout hint promises — a later call succeeds — is what
+the live suite now checks; see `live_client.py`.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from __future__ import annotations
 import asyncio
 
 import httpx
+import live_client
 import pytest
 
 import swiss_statistics_mcp.server as srv
@@ -88,12 +91,15 @@ def _clear_caches():
         srv._snapshot_cache,
         srv._hsso_index_cache,
         srv._price_index_cache,
+        srv._inflight,
+        srv._detached_results,
+        srv._abandoned,
     ):
         cache.clear()
 
 
 def _raising(exc: BaseException):
-    async def fake(_factory):
+    async def fake(_factory, budget=None):
         raise exc
 
     return fake
@@ -154,3 +160,95 @@ async def test_the_real_budget_ends_in_a_timeout_report(monkeypatch):
 def test_the_message_names_the_budget_actually_in_force(monkeypatch):
     monkeypatch.setattr(srv, "RETRY_TOTAL_BUDGET", 40.0)
     assert "40 Sekunden" in srv._source_timeout("X")["error"]
+
+
+# ---------------------------------------------------------------------------
+# live_client.call_as_client — the live suite follows the hint, exactly once
+# ---------------------------------------------------------------------------
+
+
+class _Scripted:
+    """A tool stand-in that answers with the given results, in order."""
+
+    def __init__(self, *answers: dict):
+        self.answers = list(answers)
+        self.calls = 0
+
+    async def __call__(self):
+        self.calls += 1
+        return srv.DataTableResult(**self.answers.pop(0))
+
+
+_TIMEOUT = srv._source_timeout("BFS STAT-TAB")
+_ROWS = {"rows": [{"Wert": 1}]}
+
+
+@pytest.fixture
+def _no_pause(monkeypatch):
+    pauses: list[float] = []
+
+    async def fake_sleep(seconds):
+        pauses.append(seconds)
+
+    # The module alias, not `asyncio.sleep` itself (see live_client._sleep).
+    monkeypatch.setattr(live_client, "_sleep", fake_sleep)
+    return pauses
+
+
+@pytest.mark.asyncio
+async def test_a_timeout_is_repeated_and_the_repeat_counts(_no_pause):
+    tool = _Scripted(_TIMEOUT, _TIMEOUT, _ROWS)
+    with pytest.warns(UserWarning, match="Quelle kalt: 3 Aufrufe"):
+        data = await live_client.call_as_client(tool)
+    assert data["rows"] == _ROWS["rows"]
+    assert tool.calls == 3
+    assert _no_pause == [live_client.REPEAT_PAUSE] * 2
+
+
+@pytest.mark.asyncio
+async def test_the_repeats_stop_once_the_detached_query_is_outlasted(monkeypatch, _no_pause):
+    # 120s detached / 25s per call -> 1 + 5 calls; then the server has given up
+    # too, and the timeout is the finding.
+    monkeypatch.setattr(srv, "DETACHED_BUDGET", 120.0)
+    monkeypatch.setattr(srv, "RETRY_TOTAL_BUDGET", 25.0)
+    assert live_client.max_calls() == 6
+    tool = _Scripted(*[_TIMEOUT] * 6, _ROWS)
+    with pytest.warns(UserWarning, match="6 Aufrufe"):
+        data = await live_client.call_as_client(tool)
+    assert data["error"].startswith("Zeitüberschreitung")
+    assert tool.calls == 6
+    assert len(_no_pause) == 5  # no pause after the last call
+
+
+def test_the_repeats_cover_the_detached_budget():
+    calls = live_client.max_calls()
+    assert (calls - 1) * srv.RETRY_TOTAL_BUDGET >= srv.DETACHED_BUDGET
+
+
+@pytest.mark.asyncio
+async def test_any_other_error_is_not_repeated(_no_pause):
+    tool = _Scripted({"error": "API-Fehler 400"}, _ROWS)
+    data = await live_client.call_as_client(tool)
+    assert data["error"] == "API-Fehler 400"
+    assert tool.calls == 1
+    assert _no_pause == []
+
+
+@pytest.mark.asyncio
+async def test_a_first_success_is_not_repeated(_no_pause):
+    tool = _Scripted(_ROWS, _ROWS)
+    data = await live_client.call_as_client(tool)
+    assert data["rows"] == _ROWS["rows"]
+    assert tool.calls == 1
+
+
+def test_the_helper_recognises_what_the_server_actually_sends():
+    # Drift guard: the prefix the helper keys on is the server's own wording.
+    assert _TIMEOUT["error"].startswith(live_client.TIMEOUT_PREFIX)
+
+
+def test_the_hint_no_longer_promises_what_was_not_measured():
+    # A one-value query took 36.1s cold: a narrower selection is no remedy.
+    hint = srv._source_timeout("BFS STAT-TAB", srv._PXWEB_COLD_NOTE)["hint"]
+    assert "engere Auswahl" not in hint
+    assert "36 Sekunden" in hint
