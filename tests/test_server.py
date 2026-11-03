@@ -2080,7 +2080,14 @@ class TestPriceIndexValidation:
 
 @pytest.mark.live
 class TestLiveAPI:
-    """Real API calls. Run with: pytest -m live"""
+    """Real API calls. Run with: pytest -m live
+
+    A tool reports a failure as `error`/`hint` in an otherwise empty result.
+    Assert `"error" not in data, data` before reading a field: otherwise the
+    test dies on the missing field and the log never names the cause. On
+    2.11.2026 three tests here ended in `KeyError: 'title'`, `'municipality_
+    name'` and `'years'`; what the source had answered was HTTP 429.
+    """
 
     @pytest.mark.asyncio
     async def test_live_browse_catalog_themes(self):
@@ -2097,8 +2104,15 @@ class TestLiveAPI:
 
         result = await bfs_browse_catalog(BrowseCatalogInput(theme_code="15", limit=3))
         data = result.model_dump(exclude_none=True)
+        assert "error" not in data, data
         assert data["mode"] == "tables"
         assert data["returned"] >= 1
+        # A failed metadata fetch does not fail the tool: `fetch_one` logs it
+        # and falls back to the table ID as title, so `returned` also counts
+        # tables whose metadata never arrived. On 2.11.2026 every one of those
+        # fetches answered 429, and `returned >= 1` alone stayed green.
+        unresolved = [t["table_id"] for t in data["tables"] if t["title"] == t["table_id"]]
+        assert not unresolved, f"metadata not fetched for {unresolved}; the WARNING says why"
 
     @pytest.mark.asyncio
     async def test_live_teacher_metadata(self):
@@ -2108,6 +2122,7 @@ class TestLiveAPI:
             GetTableMetadataInput(table_id="px-x-1504000000_173", lang="de")
         )
         data = result.model_dump(exclude_none=True)
+        assert "error" not in data, data
         assert "Lehrkräfte" in data["title"]
         assert len(data["variables"]) >= 3
 
@@ -2188,6 +2203,7 @@ class TestLiveAPI:
             ConstructionActivityInput(municipality_bfs=261, since_year=2015)
         )
         data = result.model_dump(exclude_none=True)
+        assert "error" not in data, data
         assert data["municipality_name"] == "Zürich"
         assert len(data["years"]) > 0
         # room-count breakdown must resolve despite _105's opaque geo codes
@@ -2204,6 +2220,7 @@ class TestLiveAPI:
             ConstructionInvestmentInput(level="kanton", code="ZH", since_year=2015)
         )
         data = result.model_dump(exclude_none=True)
+        assert "error" not in data, data
         assert len(data["years"]) > 0
         assert data["years"][0]["work_on_hand"] is not None
 

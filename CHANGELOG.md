@@ -42,6 +42,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Behoben
 
+- **Drei Live-Tests verschwiegen, was die Quelle geantwortet hatte.** Am
+  2.11.2026 wies STAT-TAB den Runner mit HTTP 429 ab. Zwei Tests nannten das,
+  drei endeten in `KeyError: 'title'`, `'municipality_name'` und `'years'`: Sie
+  lasen ein Feld aus einem Ergebnis, das nur `error` trug. Sie prüfen jetzt
+  zuerst `"error" not in data` und geben dabei das Ergebnis aus.
+- **`test_live_browse_catalog_tables` blieb grün, als jeder Metadatenabruf
+  scheiterte.** `fetch_one` fängt den Fehler ab und setzt die Tabellen-ID als
+  Titel ein; `returned >= 1` zählte diese Tabellen mit. Der Test verlangt jetzt
+  für jede Tabelle einen aufgelösten Titel. Gegenprobe mit nachgestelltem 429
+  auf allen Tabellenabrufen: vorher drei `KeyError` und dieser Test grün,
+  jetzt alle vier rot mit `API-Fehler 429` bzw. den betroffenen Tabellen-IDs.
+  Gegen die echte Quelle alle vier grün (3.11.2026).
 - **Der Zeitüberschreitungs-Hinweis versprach, was nicht gemessen war.** «Eine
   engere Auswahl kann die Antwortzeit verkürzen» ist weg: Die Abfrage aus dem
   Live-Test liefert einen einzigen Wert und brauchte trotzdem 36 s. Die gemessene
