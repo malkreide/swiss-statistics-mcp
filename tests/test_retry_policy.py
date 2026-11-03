@@ -20,6 +20,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from fixture_data import fixture_json
 
 import swiss_statistics_mcp.server as srv
 
@@ -89,6 +90,38 @@ def test_retry_after_reads_a_naive_date_as_gmt_not_local():
 @pytest.mark.parametrize("raw", ["", "   ", "soon", "not-a-date"])
 def test_an_unreadable_retry_after_falls_back_instead_of_crashing(raw):
     assert srv._parse_retry_after(_err(429, raw)) is None
+
+
+# --- The 429 STAT-TAB really sends (tests/fixtures/pxweb_429.json) -----------
+#
+# Everything above feeds the parser headers this file made up. The recording is
+# what the source answered on 3.11.2026 when its declared limit (50 calls per
+# 15 s) was exceeded on purpose: `Retry-After: 15`, delta-seconds, plus a JSON
+# body. Recorded by scripts/record_pxweb_429.py, which also logged what the
+# retries the server makes today got back (429 at +4.3 s and +8.4 s, 200 after
+# waiting the 15 s).
+
+
+def _recorded_429() -> httpx.HTTPStatusError:
+    rec = fixture_json("pxweb_429.json")
+    throttled = rec["throttled"]
+    resp = httpx.Response(
+        throttled["status"],
+        headers=throttled["headers"],
+        content=throttled["body"].encode("utf-8"),
+        request=httpx.Request("GET", rec["_provenance"]["url"]),
+    )
+    return httpx.HTTPStatusError("x", request=resp.request, response=resp)
+
+
+def test_the_recorded_stat_tab_429_is_retried():
+    assert srv._is_transient(_recorded_429())
+
+
+def test_the_recorded_stat_tab_429_is_read_as_15_seconds():
+    # The value the source sent, in the form it sent it. If a re-recording shows
+    # another number or an HTTP-date, the source changed, and this should say so.
+    assert srv._parse_retry_after(_recorded_429()) == 15.0
 
 
 def test_retry_after_is_ignored_where_it_means_nothing():

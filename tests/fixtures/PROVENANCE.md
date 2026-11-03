@@ -20,6 +20,12 @@ Live-Tests.
 sendet denselben wie der Server; ohne ihn zeichnete es eine Fehlerseite
 auf und merkte es nicht.
 
+**`pxweb_429.json` stammt nicht von hier**, sondern von
+`scripts/record_pxweb_429.py`. Jene Aufnahme ueberschreitet das Limit der
+Quelle absichtlich und laeuft deshalb nicht bei jedem Neu-Aufzeichnen mit.
+Datum, Ablauf und das deklarierte Limit stehen in der Datei selbst unter
+`_provenance`.
+
 ## `agvch_snapshot_historic.csv`
 
 - **Quelle:** `https://www.agvchapp.bfs.admin.ch/api/communes/snapshot?date=01-01-2017`
