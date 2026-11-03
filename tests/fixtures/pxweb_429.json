@@ -1,0 +1,150 @@
+{
+  "_provenance": {
+    "recorded_at": "2026-11-03T05:40:54Z",
+    "script": "scripts/record_pxweb_429.py",
+    "url": "https://www.pxweb.bfs.admin.ch/api/v1/de/px-x-0102020000_101/px-x-0102020000_101.px",
+    "declared_limit": {
+      "maxValues": 5000,
+      "maxCells": 100000,
+      "maxCalls": 50,
+      "timeWindow": 15,
+      "CORS": true
+    },
+    "burst": {
+      "concurrency": 4,
+      "sent": 49,
+      "ok_before_first_429": 45,
+      "seconds_to_first_429": 2.02
+    },
+    "note": "Aufgenommen hinter einem HTTPS-Proxy der Aufnahmeumgebung; die Kopfzeilen sind die, die beim Client ankamen. Cookies geschwaerzt."
+  },
+  "ok": {
+    "status": 200,
+    "headers": [
+      [
+        "cache-control",
+        "private,no-cache, must-revalidate Pragma: no-cache Expires: 0"
+      ],
+      [
+        "content-type",
+        "application/json; charset=utf-8"
+      ],
+      [
+        "access-control-allow-origin",
+        "*"
+      ],
+      [
+        "x-powered-by",
+        "ASP.NET"
+      ],
+      [
+        "x-content-type-options",
+        "nosniff"
+      ],
+      [
+        "x-xss-protection",
+        "1; mode=block"
+      ],
+      [
+        "content-security-policy",
+        "script-src 'self' *.admin.ch/ 'unsafe-inline' 'unsafe-eval'"
+      ],
+      [
+        "x-frame-options",
+        "SAMEORIGIN"
+      ],
+      [
+        "referrer-policy",
+        "same-origin"
+      ],
+      [
+        "strict-transport-security",
+        "max-age=31536000; includeSubDomains; preload"
+      ],
+      [
+        "date",
+        "Tue, 03 Nov 2026 05:40:55 GMT"
+      ],
+      [
+        "content-length",
+        "2469"
+      ]
+    ],
+    "body_bytes": 2469,
+    "body_sha256": "807e0c108b020558170ec5ebea29e1db95a941e917d73218ffdb0e324c61d387"
+  },
+  "throttled": {
+    "status": 429,
+    "headers": [
+      [
+        "cache-control",
+        "private,no-cache, must-revalidate Pragma: no-cache Expires: 0"
+      ],
+      [
+        "content-type",
+        "application/json"
+      ],
+      [
+        "retry-after",
+        "15"
+      ],
+      [
+        "x-powered-by",
+        "ASP.NET"
+      ],
+      [
+        "x-content-type-options",
+        "nosniff"
+      ],
+      [
+        "x-xss-protection",
+        "1; mode=block"
+      ],
+      [
+        "content-security-policy",
+        "script-src 'self' *.admin.ch/ 'unsafe-inline' 'unsafe-eval'"
+      ],
+      [
+        "x-frame-options",
+        "SAMEORIGIN"
+      ],
+      [
+        "referrer-policy",
+        "same-origin"
+      ],
+      [
+        "strict-transport-security",
+        "max-age=31536000; includeSubDomains; preload"
+      ],
+      [
+        "date",
+        "Tue, 03 Nov 2026 05:40:57 GMT"
+      ],
+      [
+        "content-length",
+        "83"
+      ]
+    ],
+    "body": "{\"error\":\"429 - Too many requests in too short timeframe. Please try again later.\"}"
+  },
+  "recovery": [
+    {
+      "phase": "server_retry",
+      "after_s": 4.26,
+      "status": 429,
+      "retry_after": "15"
+    },
+    {
+      "phase": "server_retry",
+      "after_s": 8.4,
+      "status": 429,
+      "retry_after": "15"
+    },
+    {
+      "phase": "honour_header",
+      "after_s": 24.03,
+      "status": 200,
+      "retry_after": null
+    }
+  ]
+}

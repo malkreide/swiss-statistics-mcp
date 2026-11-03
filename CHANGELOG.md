@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- **Eine echte 429-Antwort von STAT-TAB, aufgezeichnet.** Bisher prüften die
+  Unit-Tests `Retry-After` nur mit erfundenen Werten. `scripts/record_pxweb_429.py`
+  überschreitet das deklarierte Limit (50 Aufrufe in 15 s) einmal absichtlich und
+  hört beim ersten 429 auf; `tests/fixtures/pxweb_429.json` hält dieselbe Anfrage
+  als 200 und als 429 fest. Gemessen am 3.11.2026: 429 nach 45 Anfragen in 2,0 s,
+  `Retry-After: 15` (Sekunden, kein Datum), Körper
+  `{"error":"429 - Too many requests in too short timeframe. Please try again later."}`.
+  Die Versuche, die der Server heute macht, kamen nach 4,3 s und 8,4 s wieder als
+  429 zurück; nach den verlangten 15 s kam 200. Zwei Tests lesen die Aufnahme
+  durch `_is_transient` und `_parse_retry_after`.
+
+  Das erklärt die 9,4 bis 10,0 s je rotem Aufruf im Live-Lauf vom 2.11.: Der
+  Server kappt die 15 s auf `RETRY_WAIT_MAX` (4 s), macht seine drei Versuche
+  innerhalb der Sperre und gibt dann `API-Fehler 429` zurück. Ob er stattdessen
+  die 15 s abwartet oder sofort mit dieser Angabe antwortet, ist offen.
+
 ### Geändert
 
 - **Eine STAT-TAB-Abfrage, die das Budget überschreitet, läuft weiter, und der
