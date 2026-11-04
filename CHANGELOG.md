@@ -22,10 +22,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Das erklärt die 9,4 bis 10,0 s je rotem Aufruf im Live-Lauf vom 2.11.: Der
   Server kappt die 15 s auf `RETRY_WAIT_MAX` (4 s), macht seine drei Versuche
-  innerhalb der Sperre und gibt dann `API-Fehler 429` zurück. Ob er stattdessen
-  die 15 s abwartet oder sofort mit dieser Angabe antwortet, ist offen.
+  innerhalb der Sperre und gibt dann `API-Fehler 429` zurück. Was er jetzt
+  stattdessen tut, steht unter «Geändert».
 
 ### Geändert
+
+- **Ein `Retry-After` wird abgewartet, wenn er ins Budget passt; sonst nennt das
+  Tool die verlangte Pause.** Bisher kappte `_retry_wait` jede Wartezeit auf
+  `RETRY_WAIT_MAX` (4 s). Aus STAT-TABs 15 s wurden so 4 s, und alle drei
+  Versuche liefen in die Sperre. Jetzt gilt:
+  - Passt die Pause samt `RETRY_AFTER_ATTEMPT_RESERVE` (2 s für den folgenden
+    Versuch) ins restliche Budget, wird sie voll abgewartet. Der Zufallsaufschlag
+    schiebt sie nie über das Budget hinaus.
+  - Passt sie nicht, bricht die Wiederholung sofort ab. Statt «API-Fehler 429»
+    melden alle 13 Tools «Rate-Limit: … (HTTP 429)» und im Hinweis die Pause in
+    Sekunden. Ein 503 mit `Retry-After` heisst «vorübergehend nicht verfügbar».
+    Ohne den Header bleibt die bisherige Meldung.
+
+  `RETRY_WAIT_MAX` begrenzt nur noch die eigene Kurve. Gegen die echte Quelle
+  geprüft am 4.11.2026: 429 provoziert, danach lieferte `bfs_get_table_metadata`
+  nach 17,3 s die Daten; vorher wäre nach rund 9 s `API-Fehler 429` gekommen.
 
 - **Eine STAT-TAB-Abfrage, die das Budget überschreitet, läuft weiter, und der
   nächste Aufruf holt ihr Ergebnis ab.** Die Live-Läufe vom 21.9., 28.9. und

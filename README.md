@@ -420,6 +420,11 @@ The server absorbs transient BFS-API hiccups before they reach the LLM:
   exponential backoff (0.5s → 4s). `4xx` errors surface immediately so client
   bugs aren't masked. Tunable via `MCP_RETRY_MAX_ATTEMPTS`,
   `MCP_RETRY_WAIT_INITIAL`, `MCP_RETRY_WAIT_MAX` env vars.
+- **`Retry-After`** — when a `429` or `503` says how long to wait, the server
+  waits exactly that long if it fits into the call's time budget (25s), instead
+  of capping it at 4s. If it does not fit, the server stops retrying and the
+  tool reports the rate limit together with the pause the source asked for
+  (STAT-TAB sends `Retry-After: 15`).
 - **Metadata cache** — Table metadata (variables, value domains, last_updated)
   is cached in-memory per `(table_id, lang)` for 1h. Cold list/detail flows
   warm the cache; subsequent calls return instantly.

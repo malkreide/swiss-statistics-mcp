@@ -136,6 +136,36 @@ async def test_anything_else_is_still_an_internal_error(monkeypatch, tool, param
     assert not data["error"].startswith("Zeitüberschreitung")
 
 
+def _refused(status: int, retry_after: str | None) -> httpx.HTTPStatusError:
+    headers = {"Retry-After": retry_after} if retry_after is not None else {}
+    request = httpx.Request("GET", "https://example.test/x")
+    response = httpx.Response(status, headers=headers, request=request)
+    return httpx.HTTPStatusError("refused", request=request, response=response)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("tool", "params", "source"), CASES, ids=IDS)
+async def test_every_tool_names_the_pause_a_429_asked_for(monkeypatch, tool, params, source):
+    # What the ladder raises when STAT-TAB's `Retry-After: 15` does not fit the
+    # budget (tests/fixtures/pxweb_429.json). «API-Fehler 429» named neither the
+    # rate limit nor the 15 s.
+    monkeypatch.setattr(srv, "_retrying_http", _raising(_refused(429, "15")))
+    data = (await tool(params)).model_dump(exclude_none=True)
+    assert data["error"].startswith("Rate-Limit: "), data
+    assert source in data["error"]
+    assert "15 Sekunden" in data["hint"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("tool", "params", "source"), CASES, ids=IDS)
+async def test_a_429_without_retry_after_keeps_the_old_answer(monkeypatch, tool, params, source):
+    # Counter-check: without the header there is no pause to name.
+    monkeypatch.setattr(srv, "_retrying_http", _raising(_refused(429, None)))
+    data = (await tool(params)).model_dump(exclude_none=True)
+    assert not data["error"].startswith("Rate-Limit")
+    assert "429" in data["error"]
+
+
 @pytest.mark.asyncio
 async def test_the_real_budget_ends_in_a_timeout_report(monkeypatch):
     """End to end through the real `_retrying_http`, as on 21.9.2026."""

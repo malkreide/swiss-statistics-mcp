@@ -19,6 +19,7 @@ import html
 import io
 import json
 import logging
+import math
 import os
 import random
 import re
@@ -78,6 +79,10 @@ BFS_TABLE_ID_PATTERN = r"^px-[a-z]-\d{8,12}_\d{1,4}$"
 # Retry policy for outbound BFS calls. Defaults absorb the typical 503/504
 # blips from PxWeb without inflating tail latency on the common-case happy
 # path. Override via env for tests or aggressive deployments.
+#
+# RETRY_WAIT_MAX caps our own curve, not a `Retry-After`. What the source asks
+# for is waited in full when the budget holds it, and not waited for at all when
+# it does not (see `_retry_wait`). Until 3.11.2026 it capped the hint as well.
 RETRY_MAX_ATTEMPTS = int(os.environ.get("MCP_RETRY_MAX_ATTEMPTS", "3"))
 RETRY_WAIT_INITIAL = float(os.environ.get("MCP_RETRY_WAIT_INITIAL", "0.5"))
 RETRY_WAIT_MAX = float(os.environ.get("MCP_RETRY_WAIT_MAX", "4.0"))
@@ -106,6 +111,14 @@ RETRY_AFTER_JITTER = 0.25  # lands in [1.0x, 1.25x]
 # 429 or 503 is the source answering the very question the backoff curve is
 # guessing at.
 RETRY_AFTER_STATUSES = frozenset({429, 503})
+
+# What a `Retry-After` wait must leave of the budget for the attempt it waits
+# for. Without it a wait could use the budget up, and that attempt would end as
+# a timeout: a worse answer than saying how long the source asked for. Measured
+# on 3.11.2026: a STAT-TAB metadata GET from a fresh connection (each attempt
+# opens its own AsyncClient, so its own TLS handshake) took 0.55 to 0.71 s. The
+# reserve is about three of those.
+RETRY_AFTER_ATTEMPT_RESERVE = 2.0
 
 # ---------------------------------------------------------------------------
 # Reference layer: Amtliches Gemeindeverzeichnis (BFS AGVCH) + HSSO
@@ -350,14 +363,23 @@ def _parse_retry_after(exc: BaseException | None) -> float | None:
     return max(0.0, (when - datetime.now(UTC)).total_seconds())  # past date -> now
 
 
-def _retry_wait(retry_state: Any) -> float:
+def _retry_wait(retry_state: Any, remaining: float | None = None) -> float:
     """Seconds tenacity should wait before the next attempt.
 
     Replaces `wait_exponential`, which has neither jitter nor any notion of
     `Retry-After`. The source's own answer beats our guess; everything is
     spread, and the cap is applied last.
 
-    The cap wraps the jitter and not the other way round. ``min(cap, base) *
+    A `Retry-After` is waited in full, not capped at `RETRY_WAIT_MAX`. That cap
+    turned STAT-TAB's `Retry-After: 15` into 4 s, and all three attempts landed
+    inside the block (tests/fixtures/pxweb_429.json: refused again at +4.3 s and
+    +8.4 s, answered after the 15 s). Its bound is the budget instead:
+    ``remaining`` seconds less `RETRY_AFTER_ATTEMPT_RESERVE`, by default the
+    whole `RETRY_TOTAL_BUDGET`. Whether a hint fits at all is decided before
+    the wait, by `_retry_after_past_budget`; here the jitter is only kept from
+    pushing a hint that fits past the end.
+
+    The cap on the curve wraps the jitter and not the other way round. ``min(cap, base) *
     jitter`` and ``min(cap, base * jitter)`` both contain a cap and a jitter;
     only the second is bounded — a value capped at 4s and then multiplied by up
     to 1.5 lands at 6s, and the constant would claim a ceiling it does not
@@ -370,7 +392,10 @@ def _retry_wait(retry_state: Any) -> float:
     exc = retry_state.outcome.exception() if retry_state.outcome else None
     hinted = _parse_retry_after(exc)
     if hinted is not None:
-        return min(hinted * (1.0 + random.random() * RETRY_AFTER_JITTER), RETRY_WAIT_MAX)
+        if remaining is None:
+            remaining = RETRY_TOTAL_BUDGET
+        spread = hinted * (1.0 + random.random() * RETRY_AFTER_JITTER)
+        return max(0.0, min(spread, remaining - RETRY_AFTER_ATTEMPT_RESERVE))
     attempt = max(1, retry_state.attempt_number)
     return min(
         RETRY_WAIT_INITIAL
@@ -378,6 +403,20 @@ def _retry_wait(retry_state: Any) -> float:
         * (1.0 - RETRY_JITTER_SPREAD + random.random() * 2 * RETRY_JITTER_SPREAD),
         RETRY_WAIT_MAX,
     )
+
+
+def _retry_after_past_budget(retry_state: Any, remaining: float) -> bool:
+    """True when the source asked for a pause the budget cannot hold.
+
+    Then there is nothing to wait for. An attempt before the pause is over is
+    refused again (measured, see `_retry_wait`), and one after it would start
+    past the budget. The ladder stops at once, and the status error goes to the
+    tool, which tells the caller how long the source asked for
+    (`_source_asks_to_wait`) instead of sending requests into the block.
+    """
+    exc = retry_state.outcome.exception() if retry_state.outcome else None
+    hinted = _parse_retry_after(exc)
+    return hinted is not None and hinted > remaining - RETRY_AFTER_ATTEMPT_RESERVE
 
 
 async def _retrying_http(coro_factory: Callable[[], Any], budget: float | None = None) -> Any:
@@ -394,12 +433,28 @@ async def _retrying_http(coro_factory: Callable[[], Any], budget: float | None =
     outlives any ceiling without a single read expiring. `stop_after_delay`
     would not do it either — it declines to start a *new* attempt but cannot
     cut one already running.
+
+    A `Retry-After` is measured against what is left of that budget: waited in
+    full when it fits, otherwise the ladder stops and the status error is
+    raised at once (`_retry_after_past_budget`).
     """
+    budget = RETRY_TOTAL_BUDGET if budget is None else budget
+    deadline = time.monotonic() + budget
+    out_of_attempts = stop_after_attempt(RETRY_MAX_ATTEMPTS)
+
+    def _stop(retry_state: Any) -> bool:
+        return out_of_attempts(retry_state) or _retry_after_past_budget(
+            retry_state, deadline - time.monotonic()
+        )
+
+    def _wait(retry_state: Any) -> float:
+        return _retry_wait(retry_state, deadline - time.monotonic())
+
     try:
-        async with asyncio.timeout(RETRY_TOTAL_BUDGET if budget is None else budget):
+        async with asyncio.timeout(budget):
             async for attempt in AsyncRetrying(
-                stop=stop_after_attempt(RETRY_MAX_ATTEMPTS),
-                wait=_retry_wait,
+                stop=_stop,
+                wait=_wait,
                 retry=retry_if_exception(_is_transient),
                 reraise=True,
             ):
@@ -438,6 +493,30 @@ def _source_timeout(source: str, detail: str = "") -> dict[str, str]:
             "Die Quelle hat nicht rechtzeitig geantwortet; über die Anfrage selbst sagt"
             " das nichts." + detail + " Ein erneuter Aufruf kann gelingen."
         ),
+    }
+
+
+def _source_asks_to_wait(e: httpx.HTTPStatusError, source: str) -> dict[str, str] | None:
+    """`error`/`hint` for a status that came with a `Retry-After`, or ``None``.
+
+    The ladder ends on such a status in two ways: the pause did not fit the
+    budget, or the attempts ran out inside it. Either way the source has said
+    when it answers again, and that is what the caller needs. «API-Fehler 429»
+    said neither that it is a rate limit nor for how long, and a caller that
+    came straight back was refused again.
+    """
+    wait = _parse_retry_after(e)
+    if wait is None:
+        return None
+    seconds = max(1, math.ceil(wait))
+    status = e.response.status_code
+    if status == 429:
+        error = f"Rate-Limit: {source} nimmt gerade keine Anfragen an (HTTP 429)."
+    else:
+        error = f"{source} ist vorübergehend nicht verfügbar (HTTP {status})."
+    return {
+        "error": error,
+        "hint": f"Die Quelle verlangt {seconds} Sekunden Pause (Retry-After). Danach erneut aufrufen.",
     }
 
 
@@ -1706,6 +1785,8 @@ async def bfs_browse_catalog(params: BrowseCatalogInput) -> BrowseCatalogResult:
             ),
         )
     except httpx.HTTPStatusError as e:
+        if (waiting := _source_asks_to_wait(e, "BFS STAT-TAB")) is not None:
+            return BrowseCatalogResult(**waiting)
         return BrowseCatalogResult(
             error=f"API-Fehler {e.response.status_code}",
             hint="BFS STAT-TAB API nicht erreichbar. Bitte später nochmals versuchen.",
@@ -1798,6 +1879,8 @@ async def bfs_search_tables(params: SearchTablesInput) -> SearchTablesResult:
             ),
         )
     except httpx.HTTPStatusError as e:
+        if (waiting := _source_asks_to_wait(e, "BFS STAT-TAB")) is not None:
+            return SearchTablesResult(**waiting)
         return SearchTablesResult(error=f"API-Fehler {e.response.status_code}")
     except SOURCE_TIMEOUT_ERRORS:
         _LOGGER.warning("bfs_search_tables timed out", exc_info=True)
@@ -1901,6 +1984,8 @@ async def bfs_get_table_metadata(params: GetTableMetadataInput) -> TableMetadata
             ),
         )
     except httpx.HTTPStatusError as e:
+        if (waiting := _source_asks_to_wait(e, "BFS STAT-TAB")) is not None:
+            return TableMetadataResult(**waiting)
         if e.response.status_code == 404:
             return TableMetadataResult(
                 error=f"Tabelle '{params.table_id}' nicht gefunden.",
@@ -1990,6 +2075,8 @@ async def bfs_get_data(params: GetDataInput) -> DataTableResult:
         )
 
     except httpx.HTTPStatusError as e:
+        if (waiting := _source_asks_to_wait(e, "BFS STAT-TAB")) is not None:
+            return DataTableResult(**waiting)
         if e.response.status_code == 404:
             return DataTableResult(
                 error=f"Tabelle '{params.table_id}' nicht gefunden.",
@@ -2188,6 +2275,8 @@ async def bfs_education_stats(params: GetEducationStatsInput) -> DataTableResult
         )
 
     except httpx.HTTPStatusError as e:
+        if (waiting := _source_asks_to_wait(e, "BFS STAT-TAB")) is not None:
+            return DataTableResult(**waiting)
         return DataTableResult(
             error=f"API-Fehler {e.response.status_code}",
             hint="Tabelle möglicherweise aktuell nicht verfügbar. Bitte später nochmals versuchen.",
@@ -2318,6 +2407,8 @@ async def bfs_population(params: GetPopulationInput) -> DataTableResult:
         )
 
     except httpx.HTTPStatusError as e:
+        if (waiting := _source_asks_to_wait(e, "BFS STAT-TAB")) is not None:
+            return DataTableResult(**waiting)
         return DataTableResult(error=f"API-Fehler {e.response.status_code}")
     except SOURCE_TIMEOUT_ERRORS:
         _LOGGER.warning("bfs_population timed out", exc_info=True)
@@ -2423,6 +2514,8 @@ async def bfs_compare_cantons(params: CompareCantonsInput) -> DataTableResult:
         )
 
     except httpx.HTTPStatusError as e:
+        if (waiting := _source_asks_to_wait(e, "BFS STAT-TAB")) is not None:
+            return DataTableResult(**waiting)
         if e.response.status_code == 400:
             return DataTableResult(
                 error="Ungültige Anfrage. Prüfe ob die Kanton-Werte für diese Tabelle gültig sind.",
@@ -2593,6 +2686,8 @@ async def lookup_commune(params: LookupCommuneInput) -> LookupCommuneResult:
             ),
         )
     except httpx.HTTPStatusError as e:
+        if (waiting := _source_asks_to_wait(e, "Das Gemeindeverzeichnis (AGVCH)")) is not None:
+            return LookupCommuneResult(**waiting)
         return LookupCommuneResult(
             error=f"AGVCH-API-Fehler {e.response.status_code}",
             hint="Datum im Format YYYY-MM-DD prüfen. Quelle evtl. kurz nicht erreichbar.",
@@ -2726,6 +2821,8 @@ async def resolve_historical_commune(
             note=note,
         )
     except httpx.HTTPStatusError as e:
+        if (waiting := _source_asks_to_wait(e, "Das Gemeindeverzeichnis (AGVCH)")) is not None:
+            return ResolveHistoricalCommuneResult(**waiting)
         return ResolveHistoricalCommuneResult(
             error=f"AGVCH-API-Fehler {e.response.status_code}",
             hint="Datumsangaben (YYYY-MM-DD) prüfen. Quelle evtl. kurz nicht erreichbar.",
@@ -2815,6 +2912,8 @@ async def list_communes(params: ListCommunesInput) -> ListCommunesResult:
             communes=communes,
         )
     except httpx.HTTPStatusError as e:
+        if (waiting := _source_asks_to_wait(e, "Das Gemeindeverzeichnis (AGVCH)")) is not None:
+            return ListCommunesResult(**waiting)
         return ListCommunesResult(
             error=f"AGVCH-API-Fehler {e.response.status_code}",
             hint="Datum (YYYY-MM-DD) prüfen. Quelle evtl. kurz nicht erreichbar.",
@@ -3304,6 +3403,8 @@ async def bfs_construction_activity(
             note=note,
         )
     except httpx.HTTPStatusError as e:
+        if (waiting := _source_asks_to_wait(e, "BFS STAT-TAB")) is not None:
+            return ConstructionActivityResult(**waiting)
         if e.response.status_code == 400:
             return ConstructionActivityResult(
                 error="Ungültige Abfrage (HTTP 400).",
@@ -3437,6 +3538,8 @@ async def bfs_construction_investment(
             ),
         )
     except httpx.HTTPStatusError as e:
+        if (waiting := _source_asks_to_wait(e, "BFS STAT-TAB")) is not None:
+            return ConstructionInvestmentResult(**waiting)
         if e.response.status_code == 400:
             return ConstructionInvestmentResult(
                 error="Ungültige Abfrage (HTTP 400).",
@@ -3792,6 +3895,8 @@ async def bfs_price_index(params: PriceIndexInput) -> PriceIndexResult:
             result = result.model_copy(update={"series": filtered})
         return result
     except httpx.HTTPStatusError as e:
+        if (waiting := _source_asks_to_wait(e, "opendata.swiss / BFS DAM")) is not None:
+            return PriceIndexResult(index=params.index, **waiting)
         return PriceIndexResult(
             index=params.index,
             error=f"API-Fehler {e.response.status_code}",

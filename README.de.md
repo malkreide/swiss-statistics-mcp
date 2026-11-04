@@ -421,6 +421,11 @@ Der Server absorbiert transiente BFS-API-Aussetzer, bevor sie das LLM erreichen:
   exponential backoff (0.5s → 4s) wiederholt. `4xx`-Fehler werden sofort
   durchgereicht, damit Client-Bugs nicht maskiert werden. Konfigurierbar via
   `MCP_RETRY_MAX_ATTEMPTS`, `MCP_RETRY_WAIT_INITIAL`, `MCP_RETRY_WAIT_MAX`.
+- **`Retry-After`** — Nennt ein `429` oder `503` eine Wartezeit, wartet der
+  Server genau so lange, sofern sie ins Zeitbudget des Aufrufs (25s) passt,
+  statt sie auf 4s zu kappen. Passt sie nicht, bricht er ab, und das Tool
+  meldet das Rate-Limit samt der verlangten Pause (STAT-TAB sendet
+  `Retry-After: 15`).
 - **Metadaten-Cache** — Tabellen-Metadaten (Variablen, Wertebereiche,
   last_updated) werden in-memory pro `(table_id, lang)` für 1h gecacht.
   Erster Call wärmt den Cache, Folge-Calls antworten instant.
