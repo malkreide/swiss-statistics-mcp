@@ -20,6 +20,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+import respx
 from fixture_data import fixture_json
 
 import swiss_statistics_mcp.server as srv
@@ -124,6 +125,114 @@ def test_the_recorded_stat_tab_429_is_read_as_15_seconds():
     assert srv._parse_retry_after(_recorded_429()) == 15.0
 
 
+# --- What the ladder does with it: wait in full if it fits, else stop -------
+#
+# The recording settled it: capped at RETRY_WAIT_MAX, the 15 s became 4 s, and
+# every retry landed inside the block. A pause the budget holds is now waited in
+# full (A); one it cannot hold is not waited for at all, and the tool says how
+# long the source asked for (B).
+
+
+def test_a_retry_after_that_fits_is_waited_in_full_not_capped():
+    draws = [srv._retry_wait(_state(1, _recorded_429()), remaining=25.0) for _ in range(50)]
+    assert min(draws) >= 15.0 > srv.RETRY_WAIT_MAX, sorted(draws)[:3]
+
+
+def test_the_jitter_does_not_push_a_fitting_hint_past_the_budget():
+    # 17.5 s left, 2 s reserve: 15.5 s is the latest the wait may end.
+    draws = [srv._retry_wait(_state(1, _recorded_429()), remaining=17.5) for _ in range(50)]
+    assert all(15.0 <= d <= 15.5 for d in draws), (min(draws), max(draws))
+
+
+async def test_a_retry_after_that_fits_is_honoured_then_answered(monkeypatch):
+    # Real time, on purpose: the claim is about how long the ladder waited.
+    # RETRY_WAIT_MAX at 0.5 s is what a capped hint would have become.
+    monkeypatch.setattr(srv, "RETRY_WAIT_MAX", 0.5)
+    calls: list[float] = []
+
+    async def _factory():
+        calls.append(time.monotonic())
+        if len(calls) == 1:
+            raise _err(429, "1")
+        return {"ok": True}
+
+    assert await srv._retrying_http(_factory) == {"ok": True}
+    assert len(calls) == 2
+    assert calls[1] - calls[0] >= 1.0, f"came back after {calls[1] - calls[0]:.2f}s"
+
+
+async def test_a_retry_after_past_the_budget_stops_at_once(monkeypatch):
+    # The recorded 429 asks for 15 s; with 10 s of budget it cannot be honoured,
+    # and every attempt before then would be refused again.
+    monkeypatch.setattr(srv, "RETRY_TOTAL_BUDGET", 10.0)
+    calls: list[int] = []
+
+    async def _factory():
+        calls.append(1)
+        raise _recorded_429()
+
+    started = time.monotonic()
+    with pytest.raises(httpx.HTTPStatusError) as raised:
+        await srv._retrying_http(_factory)
+    assert raised.value.response.status_code == 429
+    assert len(calls) == 1, "an attempt inside the block is refused again"
+    assert time.monotonic() - started < 1.0
+
+
+async def test_after_one_honoured_pause_the_next_that_no_longer_fits_stops(monkeypatch):
+    # 3.5 s of budget: the first 1 s pause fits (1 <= 3.5 - 2), the second, from
+    # about 1.1 s in, does not. Two calls, then the status error — no third.
+    monkeypatch.setattr(srv, "RETRY_TOTAL_BUDGET", 3.5)
+    calls: list[int] = []
+
+    async def _factory():
+        calls.append(1)
+        raise _err(429, "1")
+
+    started = time.monotonic()
+    with pytest.raises(httpx.HTTPStatusError):
+        await srv._retrying_http(_factory)
+    elapsed = time.monotonic() - started
+    assert len(calls) == 2
+    assert 1.0 <= elapsed < 2.0, elapsed
+
+
+# --- What the tool tells the caller ------------------------------------------
+
+
+@respx.mock
+async def test_the_tool_names_the_pause_the_source_asked_for(monkeypatch):
+    monkeypatch.setattr(srv, "RETRY_TOTAL_BUDGET", 10.0)
+    rec = fixture_json("pxweb_429.json")
+    throttled = rec["throttled"]
+    route = respx.get(f"{srv.BFS_API_BASE}/de/px-x-1504000000_173/px-x-1504000000_173.px").mock(
+        return_value=httpx.Response(
+            throttled["status"], headers=throttled["headers"], content=throttled["body"]
+        )
+    )
+    srv._metadata_cache.clear()
+
+    result = await srv.bfs_get_table_metadata(
+        srv.GetTableMetadataInput(table_id="px-x-1504000000_173", lang="de")
+    )
+    data = result.model_dump(exclude_none=True)
+    assert data["error"].startswith("Rate-Limit: BFS STAT-TAB"), data
+    assert "15 Sekunden" in data["hint"], data
+    assert route.call_count == 1
+
+
+def test_without_a_retry_after_the_tool_keeps_its_own_message():
+    assert srv._source_asks_to_wait(_err(429), "X") is None
+    assert srv._source_asks_to_wait(_err(500, "15"), "X") is None
+
+
+def test_a_503_with_retry_after_is_not_called_a_rate_limit():
+    got = srv._source_asks_to_wait(_err(503, "30"), "Das Gemeindeverzeichnis (AGVCH)")
+    assert got is not None
+    assert "Rate-Limit" not in got["error"] and "HTTP 503" in got["error"]
+    assert "30 Sekunden" in got["hint"]
+
+
 def test_retry_after_is_ignored_where_it_means_nothing():
     assert srv._parse_retry_after(_err(500, "120")) is None
     assert srv._parse_retry_after(httpx.ConnectError("no response attached")) is None
@@ -146,18 +255,19 @@ def test_a_retry_after_wait_is_spread_one_sided():
 
 def test_a_retry_after_beats_the_curve(monkeypatch):
     monkeypatch.setattr(srv, "RETRY_WAIT_INITIAL", 0.001)
-    monkeypatch.setattr(srv, "RETRY_WAIT_MAX", 100.0)
-    hinted = srv._retry_wait(_state(1, _err(503, "30")))
+    hinted = srv._retry_wait(_state(1, _err(503, "30")), remaining=100.0)
     curve = srv._retry_wait(_state(1, httpx.ConnectError("x")))
     assert hinted >= 30.0 > curve
 
 
 def test_the_cap_is_a_real_bound_not_a_midpoint():
-    # Jitter is random — one draw proves nothing.
+    # Jitter is random — one draw proves nothing. The curve is capped by
+    # RETRY_WAIT_MAX; a Retry-After by what is left of the budget.
     for attempt in range(1, 9):
         for _ in range(25):
             assert srv._retry_wait(_state(attempt, None)) <= srv.RETRY_WAIT_MAX
-            assert srv._retry_wait(_state(attempt, _err(429, "86400"))) <= srv.RETRY_WAIT_MAX
+            hinted = srv._retry_wait(_state(attempt, _err(429, "86400")), remaining=10.0)
+            assert hinted <= 10.0 - srv.RETRY_AFTER_ATTEMPT_RESERVE
 
 
 def test_capping_before_the_jitter_would_not_have_been_a_bound():
@@ -238,7 +348,7 @@ async def test_a_slow_response_is_cut_by_the_wall_clock_deadline(monkeypatch):
     A clock that only advances when something sleeps cannot disprove a claim
     about *real* time: the code that ignores the wall clock never sleeps, so no
     time passes and the broken version stays green. This test sleeps for real —
-    deliberately, and it is the only one here that does.
+    deliberately, as do the two that wait a real `Retry-After` above.
 
     It also shows why `stop_after_delay` would not have been enough: tenacity
     declines to start a *new* attempt past the delay, but cannot cut one that
