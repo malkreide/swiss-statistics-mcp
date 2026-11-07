@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Hinzugefügt
+## [0.9.0] - 2026-11-07
+
+### Added
 
 - **Eine echte 429-Antwort von STAT-TAB, aufgezeichnet.** Bisher prüften die
   Unit-Tests `Retry-After` nur mit erfundenen Werten. `scripts/record_pxweb_429.py`
@@ -23,9 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Das erklärt die 9,4 bis 10,0 s je rotem Aufruf im Live-Lauf vom 2.11.: Der
   Server kappt die 15 s auf `RETRY_WAIT_MAX` (4 s), macht seine drei Versuche
   innerhalb der Sperre und gibt dann `API-Fehler 429` zurück. Was er jetzt
-  stattdessen tut, steht unter «Geändert».
+  stattdessen tut, steht unter «Changed».
 
-### Geändert
+### Changed
 
 - **Ein `Retry-After` wird abgewartet, wenn er ins Budget passt; sonst nennt das
   Tool die verlangte Pause.** Bisher kappte `_retry_wait` jede Wartezeit auf
@@ -74,7 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Antwortzeit wird beobachtet, der Vertrag wird geprüft. Das Budget der Suite zu
   erhöhen hätte eine Konfiguration geprüft, die kein Client fährt.
 
-### Behoben
+### Fixed
 
 - **Drei Live-Tests verschwiegen, was die Quelle geantwortet hatte.** Am
   2.11.2026 wies STAT-TAB den Runner mit HTTP 429 ab. Zwei Tests nannten das,
